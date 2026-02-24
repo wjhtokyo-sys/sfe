@@ -225,6 +225,7 @@ function PurchaseOrderPanel({ authHeaders }) {
   const [suppliers, setSuppliers] = useState([]);
   const [importSupplierId, setImportSupplierId] = useState();
   const [manualSupplierId, setManualSupplierId] = useState();
+  const [pickedPoIds, setPickedPoIds] = useState([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRows, setDetailRows] = useState([]);
   const [lineRows, setLineRows] = useState([{ jan: '', item_name: '', qty: undefined, unit_cost: undefined }]);
@@ -262,7 +263,13 @@ function PurchaseOrderPanel({ authHeaders }) {
       </>}
     </div>)}
 
-    <Table style={{ marginTop: 8 }} rowKey='id' dataSource={rows} columns={[
+    <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+      <Popconfirm title='是否要回复进货单到初始状态' onConfirm={async () => { await api.post('/api/purchase-orders/reset-status', { ids: pickedPoIds }, authHeaders); message.success('已恢复初始状态'); setPickedPoIds([]); load(); }}>
+        <Button className='click-btn' disabled={!pickedPoIds.length}>恢复按钮</Button>
+      </Popconfirm>
+    </div>
+
+    <Table style={{ marginTop: 8 }} rowKey='id' rowSelection={{ selectedRowKeys: pickedPoIds, onChange: (keys) => setPickedPoIds(keys) }} dataSource={rows} columns={[
       { title: '进货单号', dataIndex: 'po_no' },
       { title: '进货时间', dataIndex: 'purchased_at', render: fmtDate },
       { title: '供应商名', dataIndex: 'supplier_id', render: (v) => suppliers.find(s => s.id === v)?.name || `供应商${v}` },

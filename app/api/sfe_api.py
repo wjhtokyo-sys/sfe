@@ -356,6 +356,19 @@ def mark_purchase_order_paid(po_id: int, db: Session = Depends(get_db), _=Depend
     return {'ok': True}
 
 
+@router.post('/purchase-orders/reset-status')
+def reset_purchase_orders_status(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    ids = payload.get('ids') or []
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(400, '请先选择进货单')
+    rows = db.query(PurchaseOrder).filter(PurchaseOrder.id.in_(ids)).all()
+    for po in rows:
+        po.payment_status = 'unpaid'
+        po.status = 'created_unchecked'
+    db.commit()
+    return {'ok': True, 'count': len(rows)}
+
+
 @router.get('/fifo/pending')
 def list_fifo_pending(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     return db.query(FifoPendingTask).order_by(FifoPendingTask.id.desc()).all()
