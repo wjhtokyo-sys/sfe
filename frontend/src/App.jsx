@@ -140,7 +140,7 @@ function SuperCustomerPanel({ rows, authHeaders, reload }) {
 
 function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
   const [edit, setEdit] = useState(null);
-  const [newItem, setNewItem] = useState({ jan: '', brand: '', name: '', spec: '', msrp_price: 0, in_qty: 1, is_active: true });
+  const [newItem, setNewItem] = useState({ jan: '', brand: '', name: '', spec: '', msrp_price: undefined, in_qty: undefined, is_active: true });
   const cols = [{ title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' }, { title: '操作', render: (_, r) => <Button className='click-btn' onClick={() => setEdit(r)}>修改</Button> }];
   return <Card className='panel' title='商品信息管理'>
     <Space wrap>
@@ -158,9 +158,9 @@ function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
       <Input placeholder='JAN' value={newItem.jan} onChange={(e) => setNewItem({ ...newItem, jan: e.target.value })} />
       <Input placeholder='品牌' value={newItem.brand} onChange={(e) => setNewItem({ ...newItem, brand: e.target.value })} />
       <Input placeholder='商品名' value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} />
-      <InputNumber min={0} placeholder='建议价' value={newItem.msrp_price} onChange={(v) => setNewItem({ ...newItem, msrp_price: v || 0 })} />
-      <InputNumber min={1} placeholder='入数' value={newItem.in_qty} onChange={(v) => setNewItem({ ...newItem, in_qty: v || 1 })} />
-      <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/items', newItem, authHeaders); message.success('手动新增商品成功'); setNewItem({ jan: '', brand: '', name: '', spec: '', msrp_price: 0, in_qty: 1, is_active: true }); load(); }}>手动新增商品</Button>
+      <InputNumber min={0} placeholder='建议价' value={newItem.msrp_price} onChange={(v) => setNewItem({ ...newItem, msrp_price: v ?? undefined })} />
+      <InputNumber min={1} placeholder='入数' value={newItem.in_qty} onChange={(v) => setNewItem({ ...newItem, in_qty: v ?? undefined })} />
+      <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/items', newItem, authHeaders); message.success('手动新增商品成功'); setNewItem({ jan: '', brand: '', name: '', spec: '', msrp_price: undefined, in_qty: undefined, is_active: true }); load(); }}>手动新增商品</Button>
     </Space>
     <Table rowKey='id' dataSource={items} columns={cols} style={{ marginTop: 8 }} />
     <Modal open={!!edit} title='修改商品信息' onCancel={() => setEdit(null)} onOk={async () => { await api.patch(`/api/items/${edit.id}`, edit, authHeaders); message.success('修改成功'); setEdit(null); load(); }}>
