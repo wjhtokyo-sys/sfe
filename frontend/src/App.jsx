@@ -239,6 +239,26 @@ function PurchaseOrderPanel({ authHeaders }) {
   const statusTag = (v) => v === 'checked_inbound' ? <Tag color='green'>已盘点入库</Tag> : <Tag color='red'>已创建未盘点</Tag>;
   const payTag = (v) => v === 'paid' ? <Tag color='green'>已支付</Tag> : <Tag color='red'>未支付</Tag>;
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
+  const handleJanPaste = (e, startIdx) => {
+    const text = e.clipboardData?.getData('text') || '';
+    if (!text.includes('\n') && !text.includes('\t')) return;
+    const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+    if (!lines.length) return;
+    const parsed = lines.map(line => line.split('\t')).filter(cols => cols.length >= 4);
+    if (!parsed.length) return;
+    e.preventDefault();
+    const next = [...lineRows];
+    while (next.length < startIdx + parsed.length) next.push({ jan: '', item_name: '', qty: undefined, unit_cost: undefined });
+    parsed.forEach((cols, i) => {
+      next[startIdx + i] = {
+        jan: (cols[0] || '').trim(),
+        item_name: (cols[1] || '').trim(),
+        qty: cols[2] !== '' ? Number(cols[2]) : undefined,
+        unit_cost: cols[3] !== '' ? Number(cols[3]) : undefined,
+      };
+    });
+    setLineRows(next);
+  };
 
   return <Card className='panel' title='进货单管理'>
     <Space wrap>
@@ -252,7 +272,7 @@ function PurchaseOrderPanel({ authHeaders }) {
     </div>
 
     {lineRows.map((row, idx) => <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap', justifyContent: 'flex-start' }} key={idx}>
-      <Input style={{ width: '20ch' }} placeholder='JAN' value={row.jan} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, jan: e.target.value } : r))} />
+      <Input style={{ width: '20ch' }} placeholder='JAN' value={row.jan} onPaste={(e) => handleJanPaste(e, idx)} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, jan: e.target.value } : r))} />
       <Input style={{ width: '60ch' }} placeholder='品名' value={row.item_name} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, item_name: e.target.value } : r))} />
       <InputNumber style={{ width: '10ch' }} placeholder='数量' min={1} value={row.qty} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, qty: v ?? undefined } : r))} />
       <InputNumber style={{ width: '15ch' }} placeholder='进货单价' min={0} value={row.unit_cost} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, unit_cost: v ?? undefined } : r))} />
