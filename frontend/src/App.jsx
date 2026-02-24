@@ -158,8 +158,8 @@ function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
       <Input placeholder='JAN' value={newItem.jan} onChange={(e) => setNewItem({ ...newItem, jan: e.target.value })} />
       <Input placeholder='品牌' value={newItem.brand} onChange={(e) => setNewItem({ ...newItem, brand: e.target.value })} />
       <Input placeholder='商品名' value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} />
-      <InputNumber min={0} placeholder='建议价' value={newItem.msrp_price} onChange={(v) => setNewItem({ ...newItem, msrp_price: v || 0 })} />
-      <InputNumber min={1} placeholder='入数' value={newItem.in_qty} onChange={(v) => setNewItem({ ...newItem, in_qty: v || 1 })} />
+      <Space direction='vertical' size={2}><span>建议价</span><InputNumber min={0} value={newItem.msrp_price} onChange={(v) => setNewItem({ ...newItem, msrp_price: v || 0 })} /></Space>
+      <Space direction='vertical' size={2}><span>入数</span><InputNumber min={1} value={newItem.in_qty} onChange={(v) => setNewItem({ ...newItem, in_qty: v || 1 })} /></Space>
       <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/items', newItem, authHeaders); message.success('手动新增商品成功'); setNewItem({ jan: '', brand: '', name: '', spec: '', msrp_price: 0, in_qty: 1, is_active: true }); load(); }}>手动新增商品</Button>
     </Space>
     <Table rowKey='id' dataSource={items} columns={cols} style={{ marginTop: 8 }} />
