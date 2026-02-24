@@ -235,10 +235,19 @@ def list_orders(db: Session = Depends(get_db), user=Depends(get_current_user)):
 
 
 @router.delete('/orders/{order_id}')
-def delete_order(order_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+def delete_order(order_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
     order = db.get(CustomerOrder, order_id)
     if not order:
         raise HTTPException(404, '订单不存在')
+
+    if user.role == 'customer':
+        if user.customer_id != order.customer_id:
+            raise HTTPException(403, '无权删除该订单')
+        if (order.qty_allocated or 0) > 0:
+            raise HTTPException(400, '该订单已有分配记录，无法删除')
+    elif user.role != 'super_admin':
+        raise HTTPException(403, '无权删除订单')
+
     db.delete(order)
     db.commit()
     return {'ok': True}
