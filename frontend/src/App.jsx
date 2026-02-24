@@ -222,6 +222,7 @@ function SupplierPanel({ authHeaders }) {
 
 function PurchaseOrderPanel({ authHeaders }) {
   const [rows, setRows] = useState([]); const [suppliers, setSuppliers] = useState([]); const [poPick, setPoPick] = useState();
+  const [importSupplierId, setImportSupplierId] = useState();
   const [line, setLine] = useState({ po_no: '', supplier_id: undefined, jan: '', item_name: '', qty: undefined, unit_cost: undefined, payment_status: 'unpaid', purchased_at: '' });
   const load = async () => {
     const [po, sp] = await Promise.all([api.get('/api/purchase-orders', authHeaders).then(r => r.data), api.get('/api/suppliers', authHeaders).then(r => r.data)]);
@@ -231,7 +232,8 @@ function PurchaseOrderPanel({ authHeaders }) {
   return <Card className='panel' title='进货单管理'>
     <Space wrap>
       <Button className='click-btn' onClick={async () => { const resp = await api.get('/api/purchase-orders/import-template', { ...authHeaders, responseType: 'blob' }); const url = window.URL.createObjectURL(new Blob([resp.data])); const a = document.createElement('a'); a.href = url; a.download = 'purchase_order_template.xlsx'; a.click(); window.URL.revokeObjectURL(url); }}>下载导入模板</Button>
-      <Upload accept='.xlsx' showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { const fd = new FormData(); fd.append('file', file); await api.post('/api/purchase-orders/import-excel', fd, { ...authHeaders, headers: { ...authHeaders.headers, 'Content-Type': 'multipart/form-data' } }); message.success('导入成功'); load(); onSuccess('ok'); } catch (e) { message.error(e?.response?.data?.detail || '导入失败'); onError(e); } }}><Button className='click-btn' icon={<UploadOutlined />}>批量导入</Button></Upload>
+      <Select placeholder='选择供应商（必选）' style={{ width: 220 }} value={importSupplierId} options={suppliers.map(s => ({ label: `${s.id}-${s.name}`, value: s.id }))} onChange={setImportSupplierId} />
+      <Upload accept='.xlsx' showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { if (!importSupplierId) { message.error('请先选择供应商'); onError(new Error('missing supplier')); return; } const fd = new FormData(); fd.append('supplier_id', importSupplierId); fd.append('file', file); await api.post('/api/purchase-orders/import-excel', fd, { ...authHeaders, headers: { ...authHeaders.headers, 'Content-Type': 'multipart/form-data' } }); message.success('导入成功'); load(); onSuccess('ok'); } catch (e) { message.error(e?.response?.data?.detail || '导入失败'); onError(e); } }}><Button className='click-btn' icon={<UploadOutlined />}>批量导入</Button></Upload>
       <Select placeholder='进货单号' style={{ width: 220 }} value={poPick} options={rows.map(r => ({ label: r.po_no, value: r.id }))} onChange={setPoPick} />
       <Button className='click-btn' onClick={async () => { if (!poPick) return; await api.post(`/api/purchase-orders/${poPick}/status`, { status: 'checked_inbound' }, authHeaders); message.success('状态已更新'); load(); }}>修改进货状态</Button>
     </Space>

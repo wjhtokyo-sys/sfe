@@ -1,3 +1,4 @@
+from datetime import datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -155,8 +156,8 @@ def purchase_order_import_template(_=Depends(require_roles('super_admin'))):
     wb = Workbook()
     ws = wb.active
     ws.title = 'purchase_order'
-    ws.append(['po_no', 'supplier_id', 'jan', 'item_name', 'qty', 'unit_cost', 'payment_status', 'purchased_at'])
-    ws.append(['PO20260225001', 1, 'JAN00001', '示例货品', 10, 120, 'unpaid', '2026-02-25'])
+    ws.append(['jan', 'item_name', 'qty', 'unit_cost', 'payment_status', 'purchased_at'])
+    ws.append(['JAN00001', '示例货品', 10, 120, 'unpaid', '2026-02-25'])
     bio = BytesIO()
     wb.save(bio)
     bio.seek(0)
@@ -164,29 +165,29 @@ def purchase_order_import_template(_=Depends(require_roles('super_admin'))):
 
 
 @router.post('/purchase-orders/import-excel')
-def import_purchase_order_excel(file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+def import_purchase_order_excel(supplier_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    supplier = db.get(Supplier, supplier_id)
+    if not supplier:
+        raise HTTPException(400, '供应商不存在，请先选择供应商')
+
     wb = load_workbook(filename=BytesIO(file.file.read()), data_only=True)
     ws = wb.active
     rows = [r for r in ws.iter_rows(min_row=2, values_only=True) if r and r[0]]
     if not rows:
         raise HTTPException(400, '模板没有可导入数据')
-    po_nos = {str(r[0]).strip() for r in rows if r[0]}
-    if len(po_nos) != 1:
-        raise HTTPException(400, '一个文件只能包含一个进货单号')
 
-    po_no = po_nos.pop()
-    supplier_id = int(rows[0][1])
-    purchased_at = rows[0][7]
-    payment_status = str(rows[0][6] or 'unpaid')
-    po = db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first()
-    if po:
-        raise HTTPException(400, '进货单号已存在')
+    po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    while db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first():
+        po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+
+    purchased_at = rows[0][5]
+    payment_status = str(rows[0][4] or 'unpaid')
     po = PurchaseOrder(po_no=po_no, supplier_id=supplier_id, payment_status=payment_status, status='created_unchecked', purchased_at=purchased_at)
     db.add(po)
     db.flush()
     total = 0.0
     for r in rows:
-        jan, item_name, qty, unit_cost = str(r[2]).strip(), str(r[3]).strip(), int(float(r[4] or 0)), float(r[5] or 0)
+        jan, item_name, qty, unit_cost = str(r[0]).strip(), str(r[1]).strip(), int(float(r[2] or 0)), float(r[3] or 0)
         line_total = qty * unit_cost
         total += line_total
         db.add(PurchaseOrderLine(purchase_order_id=po.id, jan=jan, item_name_snapshot=item_name, qty=qty, unit_cost=unit_cost, line_total=line_total))
