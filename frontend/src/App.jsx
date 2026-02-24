@@ -265,7 +265,7 @@ function PurchaseOrderPanel({ authHeaders }) {
         title: '操作', render: (_, r) => <Space>
           <Button className='click-btn' onClick={async () => { const res = await api.get(`/api/purchase-orders/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>到货详细</Button>
           {r.payment_status !== 'paid' && <Popconfirm title='确认已支付？' onConfirm={async () => { await api.post(`/api/purchase-orders/${r.id}/pay`, {}, authHeaders); message.success('已更新为已支付'); load(); }}><Button className='click-btn' type='primary'>支付完成</Button></Popconfirm>}
-          {r.status === 'created_unchecked' && <Popconfirm title='确认盘点完成？' onConfirm={async () => { await api.post(`/api/purchase-orders/${r.id}/status`, { status: 'checked_inbound' }, authHeaders); message.success('盘点完成'); load(); }}><Button className='click-btn'>盘点完成</Button></Popconfirm>}
+          {r.status === 'created_unchecked' && <Popconfirm title='确认盘点完成？' onConfirm={async () => { await api.post(`/api/purchase-orders/${r.id}/status`, { status: 'checked_inbound' }, authHeaders); message.success('盘点完成'); load(); }}><Button className='click-btn' type='primary'>盘点完成</Button></Popconfirm>}
         </Space>
       },
     ]} />
