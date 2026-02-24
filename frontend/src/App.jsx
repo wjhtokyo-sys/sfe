@@ -16,6 +16,7 @@ export default function App() {
   const [orderPick, setOrderPick] = useState([]);
   const [fifoLot, setFifoLot] = useState({ item_id: undefined, qty_received: 1 });
   const [fifoOrderId, setFifoOrderId] = useState();
+  const [orderCustomerFilter, setOrderCustomerFilter] = useState();
 
   const authHeaders = useMemo(() => ({ headers: { Authorization: `Bearer ${token}` } }), [token]);
 
@@ -80,7 +81,17 @@ export default function App() {
       </Card>}
 
       {menu === 'orders' && <Card className='panel' title={role === 'super_admin' ? '客户订单管理' : '订单管理'}>
-        <Table rowKey='id' dataSource={data.orders} columns={orderCols} />
+        {role === 'super_admin' && <Space style={{ marginBottom: 8 }}>
+          <Select
+            allowClear
+            placeholder='按客户名筛选'
+            style={{ width: 220 }}
+            value={orderCustomerFilter}
+            options={data.customers.map(c => ({ label: c.name, value: c.id }))}
+            onChange={setOrderCustomerFilter}
+          />
+        </Space>}
+        <Table rowKey='id' dataSource={role === 'super_admin' && orderCustomerFilter ? data.orders.filter(o => o.customer_id === orderCustomerFilter) : data.orders} columns={orderCols} />
       </Card>}
 
       {menu === 'bills' && <AdminBills role={role} authHeaders={authHeaders} bills={data.bills} customers={data.customers} allocations={data.allocations} reload={load} />}
