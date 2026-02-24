@@ -223,6 +223,8 @@ function SupplierPanel({ authHeaders }) {
 function PurchaseOrderPanel({ authHeaders }) {
   const [rows, setRows] = useState([]); const [suppliers, setSuppliers] = useState([]); const [poPick, setPoPick] = useState();
   const [importSupplierId, setImportSupplierId] = useState();
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailRows, setDetailRows] = useState([]);
   const [line, setLine] = useState({ po_no: '', supplier_id: undefined, jan: '', item_name: '', qty: undefined, unit_cost: undefined, payment_status: 'unpaid', purchased_at: '' });
   const load = async () => {
     const [po, sp] = await Promise.all([api.get('/api/purchase-orders', authHeaders).then(r => r.data), api.get('/api/suppliers', authHeaders).then(r => r.data)]);
@@ -248,8 +250,16 @@ function PurchaseOrderPanel({ authHeaders }) {
     </Space>
     <Table style={{ marginTop: 8 }} rowKey='id' dataSource={rows} columns={[
       { title: '进货单号', dataIndex: 'po_no' }, { title: '进货时间', dataIndex: 'purchased_at' }, { title: '供应商ID', dataIndex: 'supplier_id' }, { title: '进货单合计进货价格', dataIndex: 'total_cost' },
-      { title: '操作', render: (_, r) => <Popconfirm title='确认删除进货单？' onConfirm={async () => { await api.delete(`/api/purchase-orders/${r.id}`, authHeaders); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm> },
+      { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={async () => { const res = await api.get(`/api/purchase-orders/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>商品详细</Button><Popconfirm title='确认删除进货单？' onConfirm={async () => { await api.delete(`/api/purchase-orders/${r.id}`, authHeaders); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
     ]} />
+    <Modal open={detailOpen} title='商品详细' footer={null} onCancel={() => setDetailOpen(false)} width={720}>
+      <Table rowKey='id' pagination={false} dataSource={detailRows} columns={[
+        { title: 'JAN', dataIndex: 'jan' },
+        { title: '品名', dataIndex: 'item_name_snapshot' },
+        { title: '数量', dataIndex: 'qty' },
+        { title: '进货价', dataIndex: 'unit_cost' },
+      ]} />
+    </Modal>
   </Card>;
 }
 

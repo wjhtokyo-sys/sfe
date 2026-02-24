@@ -233,6 +233,14 @@ def list_purchase_orders(db: Session = Depends(get_db), _=Depends(require_roles(
     return db.query(PurchaseOrder).order_by(PurchaseOrder.id.desc()).all()
 
 
+@router.get('/purchase-orders/{po_id}/lines')
+def list_purchase_order_lines(po_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    po = db.get(PurchaseOrder, po_id)
+    if not po:
+        raise HTTPException(404, '进货单不存在')
+    return db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po_id).order_by(PurchaseOrderLine.id.asc()).all()
+
+
 @router.post('/purchase-orders/lines')
 def add_purchase_order_line(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     po_no = str(payload.get('po_no', '')).strip()
