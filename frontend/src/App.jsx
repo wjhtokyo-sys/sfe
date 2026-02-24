@@ -212,50 +212,26 @@ function MergeBillBox({ orderIds, authHeaders, reload }) {
 
 function AdminBills({ role, authHeaders, bills, customers, allocations, reload }) {
   const [c, setC] = useState(); const [ids, setIds] = useState(''); const [price, setPrice] = useState(1); const [bid, setBid] = useState(); const [act, setAct] = useState('pay');
-  const [editBill, setEditBill] = useState(null);
-  const cnStatus = (t, v) => ({
-    status: { draft: '草稿', issued: '已开立', archived: '已归档' },
-    payment_status: { unpaid: '未付款', paid: '已付款', received: '已收款' },
-    shipping_status: { not_shipped: '未发货', shipped: '已发货', delivered: '已收货' },
-  }[t][v] || v);
+  const stageLabel = (b) => {
+    if (b.shipping_status === 'delivered') return '已收货';
+    if (b.shipping_status === 'shipped') return '已发货';
+    if (b.payment_status === 'received') return '已确认支付';
+    if (b.payment_status === 'paid') return '已支付';
+    return '已创建';
+  };
   const activeBills = bills.filter(b => b.status !== 'archived').map(b => ({ ...b, customer_name: customers.find(cu => cu.id === b.customer_id)?.name || `客户${b.customer_id}` }));
+  const actionOptions = role === 'customer'
+    ? [{ label: '已支付', value: 'pay' }, { label: '已收货', value: 'deliver' }]
+    : [{ label: '已创建', value: 'created' }, { label: '已支付', value: 'pay' }, { label: '已确认支付', value: 'confirm_receipt' }, { label: '已发货', value: 'ship' }, { label: '已收货', value: 'deliver' }];
+
   return <Card className='panel' title='账单管理'>
     {role === 'super_admin' && <Space><Select placeholder='客户' style={{ width: 180 }} options={customers.map(x => ({ label: x.name, value: x.id }))} onChange={setC} /><Input placeholder='分配ID 例 1,2' style={{ width: 220 }} value={ids} onChange={(e) => setIds(e.target.value)} /><InputNumber min={1} value={price} onChange={(v) => setPrice(v || 1)} /><Button className='click-btn' onClick={async () => { await api.post('/api/bills', { customer_id: c, allocation_ids: ids.split(',').map(s => Number(s.trim())).filter(Boolean), sale_unit_price: price }, authHeaders); message.success('账单生成成功'); reload(); }}>生成账单</Button></Space>}
-    <Space style={{ marginTop: 8 }}><Select placeholder='选择账单' style={{ width: 180 }} options={activeBills.map(b => ({ label: b.bill_no, value: b.id }))} onChange={setBid} /><Select style={{ width: 180 }} value={act} onChange={setAct} options={[{ label: '付款', value: 'pay' }, { label: '确认收款', value: 'confirm_receipt' }, { label: '发货', value: 'ship' }, { label: '收货', value: 'deliver' }, { label: '归档', value: 'archive' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/bills/${bid}/state`, { action: act }, authHeaders); message.success('状态更新成功'); reload(); }}>状态推进</Button></Space>
+    <Space style={{ marginTop: 8 }}><Select placeholder='选择账单' style={{ width: 180 }} options={activeBills.map(b => ({ label: b.bill_no, value: b.id }))} onChange={setBid} /><Select style={{ width: 220 }} value={act} onChange={setAct} options={actionOptions} /><Button className='click-btn' onClick={async () => { try { await api.post(`/api/bills/${bid}/state`, { action: act }, authHeaders); message.success('状态更新成功'); reload(); } catch (e) { message.error(e?.response?.data?.detail || '状态更新失败'); } }}>状态推进</Button></Space>
     <Table rowKey='id' dataSource={activeBills} columns={[
       { title: '账单号', dataIndex: 'bill_no' },
       ...(role === 'super_admin' ? [{ title: '客户名', dataIndex: 'customer_name' }] : []),
       { title: '金额', dataIndex: 'total_amount' },
-      { title: '账单状态', dataIndex: 'status', render: (v) => cnStatus('status', v) },
-      { title: '付款状态', dataIndex: 'payment_status', render: (v) => cnStatus('payment_status', v) },
-      { title: '物流状态', dataIndex: 'shipping_status', render: (v) => cnStatus('shipping_status', v) },
-      { title: '操作', render: (_, r) => <Button className='click-btn' onClick={() => setEditBill({ ...r })}>修改账单</Button> },
+      { title: '账单状态', render: (_, r) => stageLabel(r) },
     ]} style={{ marginTop: 8 }} />
-
-    <Modal
-      open={!!editBill}
-      title='修改账单'
-      onCancel={() => setEditBill(null)}
-      onOk={async () => {
-        await api.patch(`/api/bills/${editBill.id}`, {
-          bill_no: editBill.bill_no,
-          total_amount: editBill.total_amount,
-          status: editBill.status,
-          payment_status: editBill.payment_status,
-          shipping_status: editBill.shipping_status,
-        }, authHeaders);
-        message.success('账单修改成功');
-        setEditBill(null);
-        reload();
-      }}
-    >
-      {editBill && <Space direction='vertical' style={{ width: '100%' }}>
-        <Input value={editBill.bill_no} onChange={(e) => setEditBill({ ...editBill, bill_no: e.target.value })} placeholder='账单号' />
-        <InputNumber style={{ width: '100%' }} min={0} value={editBill.total_amount} onChange={(v) => setEditBill({ ...editBill, total_amount: v || 0 })} placeholder='金额' />
-        <Select value={editBill.status} onChange={(v) => setEditBill({ ...editBill, status: v })} options={[{ label: '草稿', value: 'draft' }, { label: '已开立', value: 'issued' }, { label: '已归档', value: 'archived' }]} />
-        <Select value={editBill.payment_status} onChange={(v) => setEditBill({ ...editBill, payment_status: v })} options={[{ label: '未付款', value: 'unpaid' }, { label: '已付款', value: 'paid' }, { label: '已收款', value: 'received' }]} />
-        <Select value={editBill.shipping_status} onChange={(v) => setEditBill({ ...editBill, shipping_status: v })} options={[{ label: '未发货', value: 'not_shipped' }, { label: '已发货', value: 'shipped' }, { label: '已收货', value: 'delivered' }]} />
-      </Space>}
-    </Modal>
   </Card>;
 }

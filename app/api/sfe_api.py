@@ -292,8 +292,15 @@ def list_bills(db: Session = Depends(get_db), user=Depends(get_current_user)):
 
 
 @router.post("/bills/{bill_id}/state")
-def bill_state_action(bill_id: int, payload: StateActionIn, db: Session = Depends(get_db), _=Depends(require_roles('admin', 'super_admin'))):
-    return sfe_service.update_bill_state(db, bill_id, payload.action)
+def bill_state_action(bill_id: int, payload: StateActionIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    if user.role not in {'customer', 'super_admin', 'admin'}:
+        raise HTTPException(403, '没有权限')
+    bill = db.get(Bill, bill_id)
+    if not bill:
+        raise HTTPException(404, '账单不存在')
+    if user.role == 'customer' and user.customer_id != bill.customer_id:
+        raise HTTPException(403, '没有权限')
+    return sfe_service.update_bill_state(db, bill_id, payload.action, user.role)
 
 
 @router.patch('/bills/{bill_id}')

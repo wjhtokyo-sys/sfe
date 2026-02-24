@@ -11,6 +11,15 @@ BILL_TRANSITIONS = {
     "shipping_status": {"not_shipped": ["shipped"], "shipped": ["delivered"], "delivered": []},
 }
 
+BILL_STAGE_FLOW = ["created", "paid", "confirmed", "shipped", "received"]
+BILL_STAGE_LABEL = {
+    "created": "已创建",
+    "paid": "已支付",
+    "confirmed": "已确认支付",
+    "shipped": "已发货",
+    "received": "已收货",
+}
+
 
 def create_customer(db: Session, name: str):
     obj = Customer(name=name)
@@ -167,30 +176,79 @@ def build_bill(db: Session, customer_id: int, allocation_ids: list[int], sale_un
     return bill
 
 
-def update_bill_state(db: Session, bill_id: int, action: str):
+def get_bill_stage(bill: Bill) -> str:
+    if bill.shipping_status == "delivered":
+        return "received"
+    if bill.shipping_status == "shipped":
+        return "shipped"
+    if bill.payment_status == "received":
+        return "confirmed"
+    if bill.payment_status == "paid":
+        return "paid"
+    return "created"
+
+
+def set_bill_stage(bill: Bill, stage: str):
+    if stage not in BILL_STAGE_FLOW:
+        raise HTTPException(400, "unsupported stage")
+
+    if stage == "created":
+        bill.status = "issued"
+        bill.payment_status = "unpaid"
+        bill.shipping_status = "not_shipped"
+    elif stage == "paid":
+        bill.status = "issued"
+        bill.payment_status = "paid"
+        bill.shipping_status = "not_shipped"
+    elif stage == "confirmed":
+        bill.status = "issued"
+        bill.payment_status = "received"
+        bill.payment_confirmed_at = datetime.utcnow()
+        bill.shipping_status = "not_shipped"
+    elif stage == "shipped":
+        bill.status = "issued"
+        bill.payment_status = "received"
+        bill.payment_confirmed_at = bill.payment_confirmed_at or datetime.utcnow()
+        bill.shipping_status = "shipped"
+    elif stage == "received":
+        bill.status = "issued"
+        bill.payment_status = "received"
+        bill.payment_confirmed_at = bill.payment_confirmed_at or datetime.utcnow()
+        bill.shipping_status = "delivered"
+
+
+def update_bill_state(db: Session, bill_id: int, action: str, actor_role: str):
     bill = db.get(Bill, bill_id)
     if not bill:
         raise HTTPException(404, "bill not found")
 
-    mapping = {
-        "issue": ("status", "issued"),
-        "archive": ("status", "archived"),
-        "pay": ("payment_status", "paid"),
-        "confirm_receipt": ("payment_status", "received"),
-        "ship": ("shipping_status", "shipped"),
-        "deliver": ("shipping_status", "delivered"),
+    action_to_stage = {
+        "pay": "paid",
+        "confirm_receipt": "confirmed",
+        "ship": "shipped",
+        "deliver": "received",
+        "created": "created",
     }
-    if action not in mapping:
+    if action not in action_to_stage:
         raise HTTPException(400, "unsupported action")
 
-    field, target = mapping[action]
-    current = getattr(bill, field)
-    if target not in BILL_TRANSITIONS[field][current]:
-        raise HTTPException(400, f"state guard blocked: {field} {current} -> {target}")
+    target_stage = action_to_stage[action]
+    current_stage = get_bill_stage(bill)
+    current_idx = BILL_STAGE_FLOW.index(current_stage)
+    target_idx = BILL_STAGE_FLOW.index(target_stage)
 
-    setattr(bill, field, target)
-    if action == "confirm_receipt":
-        bill.payment_confirmed_at = datetime.utcnow()
+    if actor_role == 'customer':
+        allowed = ((current_stage == 'created' and target_stage == 'paid') or (current_stage == 'shipped' and target_stage == 'received'))
+        if not allowed:
+            raise HTTPException(403, '没有权限')
+    elif actor_role == 'super_admin':
+        if target_idx < current_idx:
+            raise HTTPException(400, '状态流不可逆')
+    else:
+        if target_idx != current_idx + 1:
+            raise HTTPException(400, '状态流不可逆')
+
+    set_bill_stage(bill, target_stage)
     db.commit()
     db.refresh(bill)
     return bill
