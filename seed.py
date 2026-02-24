@@ -6,7 +6,7 @@ def run():
     db = SessionLocal()
     try:
         if db.query(Customer).count() < 3:
-            customers = [Customer(name='客户A'), Customer(name='客户B'), Customer(name='客户C')]
+            customers = [Customer(name='客户A', is_active=True), Customer(name='客户B', is_active=True), Customer(name='客户C', is_active=True)]
             db.add_all(customers)
             db.commit()
         customers = db.query(Customer).order_by(Customer.id.asc()).limit(3).all()

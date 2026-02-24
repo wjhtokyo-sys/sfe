@@ -1,272 +1,144 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  Button,
-  Card,
-  Form,
-  Input,
-  InputNumber,
-  Layout,
-  Menu,
-  Modal,
-  Popconfirm,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
+import { Button, Card, Form, Input, InputNumber, Layout, Menu, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography, Upload, message } from 'antd';
+import { UploadOutlined } from '@ant-design/icons';
 import { api } from './api/client';
 
 const { Sider, Content } = Layout;
 const { Title } = Typography;
 
 export default function App() {
-  const [mode, setMode] = useState('home');
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [role, setRole] = useState(localStorage.getItem('role') || '');
   const [menu, setMenu] = useState('items');
   const [me, setMe] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [orderModal, setOrderModal] = useState({ open: false, item: null });
-  const [orderQty, setOrderQty] = useState(1);
-
-  const [data, setData] = useState({ items: [], orders: [], bills: [], customers: [], lots: [], allocations: [] });
+  const [kw, setKw] = useState('');
+  const [data, setData] = useState({ items: [], orders: [], bills: [], customers: [], lots: [], allocations: [], superCustomers: [] });
+  const [orderPick, setOrderPick] = useState([]);
 
   const authHeaders = useMemo(() => ({ headers: { Authorization: `Bearer ${token}` } }), [token]);
 
-  const login = async (url, values) => {
+  const login = async (url, v) => {
     try {
-      const res = await api.post(url, values);
-      setToken(res.data.token);
-      setRole(res.data.role);
-      setMode('panel');
-      localStorage.setItem('token', res.data.token);
-      localStorage.setItem('role', res.data.role);
+      const r = await api.post(url, v);
+      localStorage.setItem('token', r.data.token);
+      localStorage.setItem('role', r.data.role);
+      setToken(r.data.token); setRole(r.data.role);
       message.success('登录成功');
-    } catch (err) {
-      message.error(err?.response?.data?.detail || '登录失败');
-    }
+    } catch (e) { message.error(e?.response?.data?.detail || '登录失败'); }
   };
 
-  const logout = () => {
-    setToken('');
-    setRole('');
-    setMode('home');
-    setMenu('items');
-    setMe(null);
-    localStorage.clear();
-    message.success('已登出');
-  };
-
-  const req = (u) => api.get(u, authHeaders).then((r) => r.data).catch(() => []);
+  const logout = () => { localStorage.clear(); setToken(''); setRole(''); setMe(null); };
 
   const load = async () => {
     if (!token) return;
-    setLoading(true);
-    try {
-      const profile = await api.get('/auth/me', authHeaders).then((r) => r.data);
-      setMe(profile);
-      const [items, orders, bills, customers, lots, allocations] = await Promise.all([
-        req('/api/items'),
-        req('/api/orders'),
-        req('/api/bills'),
-        req('/api/customers'),
-        req('/api/lots'),
-        req('/api/allocations'),
-      ]);
-      setData({ items, orders, bills, customers, lots, allocations });
-    } catch {
-      message.error('会话失效，请重新登录');
-      logout();
-    } finally {
-      setLoading(false);
-    }
+    const meInfo = await api.get('/auth/me', authHeaders).then(r => r.data);
+    setMe(meInfo);
+    const req = (u) => api.get(u, authHeaders).then(r => r.data).catch(() => []);
+    const [items, orders, bills, customers, lots, allocations, superCustomers] = await Promise.all([
+      req(`/api/items${kw ? `?keyword=${encodeURIComponent(kw)}` : ''}`),
+      req('/api/orders'), req('/api/bills'), req('/api/customers'), req('/api/lots'), req('/api/allocations'), req('/api/super/customers'),
+    ]);
+    setData({ items, orders, bills, customers, lots, allocations, superCustomers });
   };
 
-  useEffect(() => {
-    if (token) {
-      setMode('panel');
-      load();
-    }
-  }, [token]);
+  useEffect(() => { if (token) load(); }, [token]);
 
-  const createOrderByCustomer = async () => {
-    if (!orderModal.item || !me?.customer_id) return;
-    if (orderQty <= 0) return message.error('订货数必须大于0');
-    await api.post('/api/orders', { customer_id: me.customer_id, item_id: orderModal.item.id, qty_requested: orderQty }, authHeaders);
-    message.success('下单成功');
-    setOrderModal({ open: false, item: null });
-    setOrderQty(1);
-    load();
-  };
+  if (!token) return <div className='page'>
+    <Title level={3}>SFE 登录入口</Title>
+    <Card title='客户登录入口页' className='login-wrap'><Form onFinish={(v) => login('/auth/customer-login', v)}><Form.Item name='username' rules={[{ required: true }]}><Input placeholder='客户账号' /></Form.Item><Form.Item name='password' rules={[{ required: true }]}><Input.Password placeholder='密码' /></Form.Item><Button className='click-btn' htmlType='submit' type='primary'>客户登录</Button></Form></Card>
+    <Card title='管理员登录入口页' className='login-wrap'><Form onFinish={(v) => login('/auth/admin-login', v)}><Form.Item name='username' rules={[{ required: true }]}><Input placeholder='管理员账号' /></Form.Item><Form.Item name='password' rules={[{ required: true }]}><Input.Password placeholder='密码' /></Form.Item><Button className='click-btn' htmlType='submit' type='primary'>管理员登录</Button></Form></Card>
+  </div>;
 
-  const doAdminAction = async (fn) => {
-    try {
-      await fn();
-      message.success('操作成功');
-      load();
-    } catch (e) {
-      message.error(e?.response?.data?.detail || '操作失败');
-    }
-  };
+  const customerMenus = [{ key: 'items', label: '商品信息查询' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }];
+  const adminMenus = [{ key: 'customers', label: '客户管理' }, { key: 'items_admin', label: '商品信息管理' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单管理' }];
 
-  if (mode === 'home') {
-    return (
-      <div className="page">
-        <Title level={3}>SFE 登录入口</Title>
-        <div className="login-wrap">
-          <Card title="客户登录入口页">
-            <Form onFinish={(v) => login('/auth/customer-login', v)}>
-              <Form.Item name="username" rules={[{ required: true }]}><Input placeholder="客户账号" /></Form.Item>
-              <Form.Item name="password" rules={[{ required: true }]}><Input.Password placeholder="密码" /></Form.Item>
-              <Button className="click-btn" type="primary" htmlType="submit">客户登录</Button>
-            </Form>
-          </Card>
-        </div>
-        <div className="login-wrap">
-          <Card title="管理员登录入口页">
-            <Form onFinish={(v) => login('/auth/admin-login', v)}>
-              <Form.Item name="username" rules={[{ required: true }]}><Input placeholder="管理员账号" /></Form.Item>
-              <Form.Item name="password" rules={[{ required: true }]}><Input.Password placeholder="密码" /></Form.Item>
-              <Button className="click-btn" type="primary" htmlType="submit">管理员登录</Button>
-            </Form>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  const customerMenus = [
-    { key: 'items', label: '商品信息查询' },
-    { key: 'orders', label: '订单管理' },
-    { key: 'bills', label: '账单管理' },
-    { key: 'history', label: '历史账单' },
+  const customerItemCols = [
+    { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '入数', dataIndex: 'in_qty' },
+    { title: '操作', render: (_, row) => <CustomerOrderBtn row={row} me={me} authHeaders={authHeaders} reload={load} /> },
   ];
 
-  const adminMenus = [
-    { key: 'customers', label: '客户管理' },
-    { key: 'fifo', label: 'FIFO管理' },
-    { key: 'orders', label: '订单管理' },
-    { key: 'bills', label: '账单管理' },
-    { key: 'history', label: '历史账单管理' },
+  const orderCols = [{ title: '订单ID', dataIndex: 'id' }, { title: '客户ID', dataIndex: 'customer_id' }, { title: '商品', dataIndex: 'item_name_snapshot' }, { title: '订货', dataIndex: 'qty_requested' }, { title: '已分配', dataIndex: 'qty_allocated' }, { title: '状态', dataIndex: 'status', render: (v) => <Tag>{v}</Tag> }];
+
+  const billCols = [{ title: '账单号', dataIndex: 'bill_no' }, { title: '金额', dataIndex: 'total_amount' }, { title: '账单状态', dataIndex: 'status' }, { title: '付款状态', dataIndex: 'payment_status' }, { title: '物流状态', dataIndex: 'shipping_status' }];
+
+  return <Layout style={{ minHeight: '100vh' }}>
+    <Sider><div style={{ color: '#fff', padding: 16 }}>{role === 'customer' ? '客户管理页' : '超级管理员管理页'}</div><Menu theme='dark' mode='inline' selectedKeys={[menu]} items={role === 'customer' ? customerMenus : adminMenus} onClick={(e) => setMenu(e.key)} /></Sider>
+    <Layout><Content className='page'>
+      <Space><Button className='click-btn' onClick={load}>刷新</Button><Button className='click-btn' danger onClick={logout}>登出</Button></Space>
+
+      {menu === 'items' && <Card className='panel' title='商品信息查询'>
+        <Space><Input placeholder='按JAN或关键字检索' value={kw} onChange={(e) => setKw(e.target.value)} /><Button className='click-btn' onClick={load}>搜索</Button></Space>
+        <Table rowKey='id' dataSource={data.items} columns={customerItemCols} style={{ marginTop: 8 }} />
+      </Card>}
+
+      {menu === 'orders' && <Card className='panel' title='订单管理'>
+        <Table rowKey='id' dataSource={data.orders} columns={orderCols} rowSelection={role === 'super_admin' ? { onChange: (keys) => setOrderPick(keys) } : undefined} />
+        {role === 'super_admin' && <MergeBillBox orderIds={orderPick} authHeaders={authHeaders} reload={load} />}
+      </Card>}
+
+      {menu === 'bills' && <AdminBills authHeaders={authHeaders} bills={data.bills} customers={data.customers} allocations={data.allocations} reload={load} />}
+      {menu === 'history' && <Card className='panel' title='历史账单'><Table rowKey='id' dataSource={data.bills.filter(b => b.status === 'archived')} columns={billCols} /></Card>}
+
+      {role !== 'customer' && menu === 'customers' && <SuperCustomerPanel rows={data.superCustomers} authHeaders={authHeaders} reload={load} />}
+
+      {role !== 'customer' && menu === 'items_admin' && <ItemAdminPanel items={data.items} kw={kw} setKw={setKw} load={load} authHeaders={authHeaders} />}
+
+      {role !== 'customer' && menu === 'fifo' && <Card className='panel' title='FIFO管理'>
+        <Table rowKey='id' dataSource={data.lots.map(l => ({ ...l, item_name: data.items.find(i => i.id === l.item_id)?.name || '' }))} columns={[{ title: '批次ID', dataIndex: 'id' }, { title: '商品名', dataIndex: 'item_name' }, { title: '剩余', dataIndex: 'qty_remaining' }, { title: 'FIFO序', dataIndex: 'fifo_rank' }]} />
+      </Card>}
+
+    </Content></Layout>
+  </Layout>;
+}
+
+function CustomerOrderBtn({ row, me, authHeaders, reload }) {
+  const [open, setOpen] = useState(false); const [qty, setQty] = useState(1);
+  return <>
+    <Button className='click-btn' type='primary' onClick={() => setOpen(true)}>下单</Button>
+    <Modal open={open} title='填写订货数' onCancel={() => setOpen(false)} onOk={async () => { await api.post('/api/orders', { customer_id: me.customer_id, item_id: row.id, qty_requested: qty }, authHeaders); message.success('下单成功'); setOpen(false); reload(); }}>
+      <InputNumber min={1} value={qty} onChange={(v) => setQty(v || 1)} style={{ width: '100%' }} />
+    </Modal>
+  </>;
+}
+
+function SuperCustomerPanel({ rows, authHeaders, reload }) {
+  const [edit, setEdit] = useState(null); const [pwd, setPwd] = useState(''); const [active, setActive] = useState(true);
+  const cols = [
+    { title: '用户名', dataIndex: 'username' }, { title: '客户名', dataIndex: 'customer_name' }, { title: '激活', dataIndex: 'is_active', render: (v) => <Tag>{v ? '启用' : '停用'}</Tag> },
+    { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => { setEdit(r); setPwd(''); setActive(r.is_active); }}>修改</Button><Popconfirm title='确认删除客户？' onConfirm={async () => { await api.delete(`/api/super/customers/${r.user_id}`, authHeaders); message.success('已删除'); reload(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
   ];
+  return <Card className='panel' title='客户管理'>
+    <Table rowKey='user_id' columns={cols} dataSource={rows} />
+    <Modal open={!!edit} title='修改客户账号' onCancel={() => setEdit(null)} onOk={async () => { await api.patch(`/api/super/customers/${edit.user_id}`, { password: pwd || undefined, is_active: active }, authHeaders); message.success('修改成功'); setEdit(null); reload(); }}>
+      <Space direction='vertical' style={{ width: '100%' }}><Input.Password placeholder='新密码（留空不改）' value={pwd} onChange={(e) => setPwd(e.target.value)} /><div>激活状态：<Switch checked={active} onChange={setActive} /></div></Space>
+    </Modal>
+  </Card>;
+}
 
-  const customerItemColumns = [
-    { title: 'JAN', dataIndex: 'jan' },
-    { title: '品牌', dataIndex: 'brand' },
-    { title: '名称', dataIndex: 'name' },
-    { title: '建议价', dataIndex: 'msrp_price' },
-    {
-      title: '操作',
-      render: (_, row) => <Button className="click-btn" type="primary" onClick={() => setOrderModal({ open: true, item: row })}>下单</Button>,
-    },
-  ];
+function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
+  const [edit, setEdit] = useState(null);
+  const cols = [{ title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '入数', dataIndex: 'in_qty' }, { title: '操作', render: (_, r) => <Button className='click-btn' onClick={() => setEdit(r)}>修改</Button> }];
+  return <Card className='panel' title='商品信息管理'>
+    <Space><Input placeholder='按JAN或关键字检索' value={kw} onChange={(e) => setKw(e.target.value)} /><Button className='click-btn' onClick={load}>搜索</Button><Button className='click-btn' onClick={() => window.open('http://127.0.0.1:8000/api/items/import-template')}>下载导入模板</Button>
+      <Upload showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { const fd = new FormData(); fd.append('file', file); await api.post('/api/items/import-excel', fd, { ...authHeaders, headers: { ...authHeaders.headers, 'Content-Type': 'multipart/form-data' } }); message.success('批量导入成功'); load(); onSuccess('ok'); } catch (e) { message.error('导入失败'); onError(e); } }}><Button className='click-btn' icon={<UploadOutlined />}>批量导入Excel</Button></Upload>
+    </Space>
+    <Table rowKey='id' dataSource={items} columns={cols} style={{ marginTop: 8 }} />
+    <Modal open={!!edit} title='修改商品信息' onCancel={() => setEdit(null)} onOk={async () => { await api.patch(`/api/items/${edit.id}`, edit, authHeaders); message.success('修改成功'); setEdit(null); load(); }}>
+      {edit && <Space direction='vertical' style={{ width: '100%' }}><Input value={edit.jan} onChange={(e) => setEdit({ ...edit, jan: e.target.value })} /><Input value={edit.brand} onChange={(e) => setEdit({ ...edit, brand: e.target.value })} /><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /><InputNumber value={edit.in_qty} onChange={(v) => setEdit({ ...edit, in_qty: v || 1 })} style={{ width: '100%' }} /></Space>}
+    </Modal>
+  </Card>;
+}
 
-  const orderColumns = [
-    { title: '订单ID', dataIndex: 'id' },
-    { title: '商品', dataIndex: 'item_name_snapshot' },
-    { title: '订货数', dataIndex: 'qty_requested' },
-    { title: '已分配', dataIndex: 'qty_allocated' },
-    { title: '状态', dataIndex: 'status', render: (v) => <Tag>{v}</Tag> },
-  ];
+function MergeBillBox({ orderIds, authHeaders, reload }) {
+  const [price, setPrice] = useState(1);
+  return <Space style={{ marginTop: 8 }}><InputNumber min={1} value={price} onChange={(v) => setPrice(v || 1)} /><Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/bills/from-orders', { order_ids: orderIds, sale_unit_price: price }, authHeaders); message.success('已合并生成新账单'); reload(); }}>合并选中订单生成账单</Button></Space>;
+}
 
-  const billColumns = [
-    { title: '账单号', dataIndex: 'bill_no' },
-    { title: '金额', dataIndex: 'total_amount' },
-    { title: '账单状态', dataIndex: 'status', render: (v) => <Tag>{v}</Tag> },
-    { title: '付款状态', dataIndex: 'payment_status', render: (v) => <Tag>{v}</Tag> },
-    { title: '物流状态', dataIndex: 'shipping_status', render: (v) => <Tag>{v}</Tag> },
-  ];
-
-  const adminOrderColumns = [...orderColumns, { title: '客户ID', dataIndex: 'customer_id' }];
-  const adminCustomerColumns = [{ title: '客户ID', dataIndex: 'id' }, { title: '名称', dataIndex: 'name' }];
-  const lotColumns = [{ title: '批次ID', dataIndex: 'id' }, { title: '商品ID', dataIndex: 'item_id' }, { title: '剩余', dataIndex: 'qty_remaining' }, { title: 'FIFO序', dataIndex: 'fifo_rank' }];
-  const allocColumns = [{ title: '分配ID', dataIndex: 'id' }, { title: '订单ID', dataIndex: 'order_line_id' }, { title: '批次ID', dataIndex: 'lot_id' }, { title: '数量', dataIndex: 'qty_allocated' }, { title: '状态', dataIndex: 'status' }];
-
-  const AdminOrdersPanel = () => {
-    const [f, setF] = useState({ customer_id: undefined, item_id: undefined, qty_requested: 1 });
-    return <Card className="panel" title="订单管理">
-      <Space wrap>
-        <Select style={{ width: 160 }} placeholder="客户" options={data.customers.map(c=>({label:`${c.id}-${c.name}`,value:c.id}))} onChange={(v)=>setF({...f,customer_id:v})} />
-        <Select style={{ width: 220 }} placeholder="商品" options={data.items.map(i=>({label:`${i.jan}-${i.name}`,value:i.id}))} onChange={(v)=>setF({...f,item_id:v})} />
-        <InputNumber min={1} value={f.qty_requested} onChange={(v)=>setF({...f,qty_requested:v||1})} />
-        <Button className="click-btn" type="primary" onClick={()=>doAdminAction(()=>api.post('/api/orders',f,authHeaders))}>新增订单</Button>
-      </Space>
-      <Table rowKey="id" columns={adminOrderColumns} dataSource={data.orders} loading={loading} style={{ marginTop: 12 }} />
-    </Card>;
-  };
-
-  const AdminFifoPanel = () => {
-    const [lot, setLot] = useState({ item_id: undefined, qty_received: 1 });
-    const [orderLineId, setOrderLineId] = useState();
-    return <Card className="panel" title="FIFO管理">
-      <Space wrap>
-        <Select style={{ width: 220 }} placeholder="商品" options={data.items.map(i=>({label:`${i.jan}-${i.name}`,value:i.id}))} onChange={(v)=>setLot({...lot,item_id:v})} />
-        <InputNumber min={1} value={lot.qty_received} onChange={(v)=>setLot({...lot,qty_received:v||1})} />
-        <Button className="click-btn" type="primary" onClick={()=>doAdminAction(()=>api.post('/api/lots',lot,authHeaders))}>到货入库</Button>
-        <Select style={{ width: 220 }} placeholder="待分配订单" options={data.orders.filter(o=>o.status==='open').map(o=>({label:`订单${o.id} ${o.item_name_snapshot}`,value:o.id}))} onChange={setOrderLineId} />
-        <Button className="click-btn" onClick={()=>doAdminAction(()=>api.post('/api/allocations/fifo',{order_line_id:orderLineId,allocated_by:role},authHeaders))}>执行FIFO分配</Button>
-      </Space>
-      <Table rowKey="id" columns={lotColumns} dataSource={data.lots} style={{ marginTop: 12 }} />
-      <Table rowKey="id" columns={allocColumns} dataSource={data.allocations} style={{ marginTop: 12 }} />
-    </Card>;
-  };
-
-  const AdminBillsPanel = () => {
-    const [billForm, setBillForm] = useState({ customer_id: undefined, allocation_ids: '', sale_unit_price: 1 });
-    const [stateForm, setStateForm] = useState({ bill_id: undefined, action: 'pay' });
-    return <Card className="panel" title="账单管理">
-      <Space wrap>
-        <Select style={{ width: 180 }} placeholder="客户" options={data.customers.map(c=>({label:`${c.id}-${c.name}`,value:c.id}))} onChange={(v)=>setBillForm({...billForm,customer_id:v})} />
-        <Input style={{ width: 220 }} placeholder="allocation ids: 1,2" onChange={(e)=>setBillForm({...billForm,allocation_ids:e.target.value})} />
-        <InputNumber min={1} value={billForm.sale_unit_price} onChange={(v)=>setBillForm({...billForm,sale_unit_price:v||1})} />
-        <Button className="click-btn" type="primary" onClick={()=>doAdminAction(()=>api.post('/api/bills',{...billForm,allocation_ids:billForm.allocation_ids.split(',').map(s=>Number(s.trim())).filter(Boolean)},authHeaders))}>生成账单</Button>
-      </Space>
-      <Space wrap style={{ marginTop: 8 }}>
-        <Select style={{ width: 180 }} placeholder="账单" options={data.bills.map(b=>({label:`${b.id}-${b.bill_no}`,value:b.id}))} onChange={(v)=>setStateForm({...stateForm,bill_id:v})} />
-        <Select style={{ width: 180 }} value={stateForm.action} onChange={(v)=>setStateForm({...stateForm,action:v})}
-          options={['pay','confirm_receipt','ship','deliver','archive'].map(v=>({label:v,value:v}))} />
-        <Popconfirm title="确认推进状态？" onConfirm={()=>doAdminAction(()=>api.post(`/api/bills/${stateForm.bill_id}/state`,{action:stateForm.action},authHeaders))}>
-          <Button className="click-btn">状态推进</Button>
-        </Popconfirm>
-      </Space>
-      <Table rowKey="id" columns={billColumns} dataSource={data.bills} style={{ marginTop: 12 }} />
-    </Card>;
-  };
-
-  return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider>
-        <div style={{ color: '#fff', padding: 16 }}>{role === 'customer' ? '客户管理页' : '管理员管理页'}</div>
-        <Menu theme="dark" mode="inline" selectedKeys={[menu]} items={role === 'customer' ? customerMenus : adminMenus} onClick={(e) => setMenu(e.key)} />
-      </Sider>
-      <Layout>
-        <Content className="page">
-          <Space>
-            <Button className="click-btn" onClick={load}>刷新</Button>
-            <Button className="click-btn" danger onClick={logout}>登出</Button>
-          </Space>
-
-          {role === 'customer' && menu === 'items' && <Card className="panel" title="商品信息查询"><Table rowKey="id" columns={customerItemColumns} dataSource={data.items} loading={loading} /></Card>}
-          {role === 'customer' && menu === 'orders' && <Card className="panel" title="订单管理"><Table rowKey="id" columns={orderColumns} dataSource={data.orders} /></Card>}
-          {role === 'customer' && menu === 'bills' && <Card className="panel" title="账单管理"><Table rowKey="id" columns={billColumns} dataSource={data.bills} /></Card>}
-          {role === 'customer' && menu === 'history' && <Card className="panel" title="历史账单"><Table rowKey="id" columns={billColumns} dataSource={data.bills.filter((b) => b.status === 'archived')} /></Card>}
-
-          {role !== 'customer' && menu === 'customers' && <Card className="panel" title="客户管理"><Table rowKey="id" columns={adminCustomerColumns} dataSource={data.customers} /></Card>}
-          {role !== 'customer' && menu === 'fifo' && <AdminFifoPanel />}
-          {role !== 'customer' && menu === 'orders' && <AdminOrdersPanel />}
-          {role !== 'customer' && menu === 'bills' && <AdminBillsPanel />}
-          {role !== 'customer' && menu === 'history' && <Card className="panel" title="历史账单管理"><Table rowKey="id" columns={billColumns} dataSource={data.bills.filter((b) => b.status === 'archived')} /></Card>}
-
-          <Modal title={`下单：${orderModal.item?.name || ''}`} open={orderModal.open} onCancel={() => setOrderModal({ open: false, item: null })} onOk={createOrderByCustomer} okText="确认下单">
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <div>客户：{me?.username}</div>
-              <InputNumber min={1} value={orderQty} onChange={(v) => setOrderQty(v || 1)} style={{ width: '100%' }} />
-            </Space>
-          </Modal>
-        </Content>
-      </Layout>
-    </Layout>
-  );
+function AdminBills({ authHeaders, bills, customers, allocations, reload }) {
+  const [c, setC] = useState(); const [ids, setIds] = useState(''); const [price, setPrice] = useState(1); const [bid, setBid] = useState(); const [act, setAct] = useState('pay');
+  return <Card className='panel' title='账单管理'>
+    <Space><Select placeholder='客户' style={{ width: 180 }} options={customers.map(x => ({ label: x.name, value: x.id }))} onChange={setC} /><Input placeholder='分配ID 例 1,2' style={{ width: 220 }} value={ids} onChange={(e) => setIds(e.target.value)} /><InputNumber min={1} value={price} onChange={(v) => setPrice(v || 1)} /><Button className='click-btn' onClick={async () => { await api.post('/api/bills', { customer_id: c, allocation_ids: ids.split(',').map(s => Number(s.trim())).filter(Boolean), sale_unit_price: price }, authHeaders); message.success('账单生成成功'); reload(); }}>生成账单</Button></Space>
+    <Space style={{ marginTop: 8 }}><Select placeholder='选择账单' style={{ width: 180 }} options={bills.map(b => ({ label: b.bill_no, value: b.id }))} onChange={setBid} /><Select style={{ width: 180 }} value={act} onChange={setAct} options={[{ label: '付款', value: 'pay' }, { label: '确认收款', value: 'confirm_receipt' }, { label: '发货', value: 'ship' }, { label: '收货', value: 'deliver' }, { label: '归档', value: 'archive' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/bills/${bid}/state`, { action: act }, authHeaders); message.success('状态更新成功'); reload(); }}>状态推进</Button></Space>
+    <Table rowKey='id' dataSource={bills} columns={[{ title: '账单号', dataIndex: 'bill_no' }, { title: '金额', dataIndex: 'total_amount' }, { title: '账单状态', dataIndex: 'status' }, { title: '付款状态', dataIndex: 'payment_status' }, { title: '物流状态', dataIndex: 'shipping_status' }]} style={{ marginTop: 8 }} />
+  </Card>;
 }

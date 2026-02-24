@@ -1,5 +1,6 @@
 from datetime import datetime
 from fastapi import HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.entities import Allocation, Bill, BillLine, Customer, CustomerOrder, InventoryLot, Item
@@ -193,3 +194,29 @@ def update_bill_state(db: Session, bill_id: int, action: str):
     db.commit()
     db.refresh(bill)
     return bill
+
+
+def search_items(db: Session, keyword: str | None):
+    q = db.query(Item)
+    if keyword:
+        kw = f"%{keyword}%"
+        q = q.filter(or_(Item.jan.like(kw), Item.name.like(kw), Item.brand.like(kw)))
+    return q.order_by(Item.id.desc()).all()
+
+
+def build_bill_from_orders(db: Session, order_ids: list[int], allocated_by: str, sale_unit_price: float):
+    if not order_ids:
+        raise HTTPException(400, "请选择订单")
+    orders = db.query(CustomerOrder).filter(CustomerOrder.id.in_(order_ids)).all()
+    if len(orders) != len(order_ids):
+        raise HTTPException(400, "订单不存在")
+    customer_ids = {o.customer_id for o in orders}
+    if len(customer_ids) != 1:
+        raise HTTPException(400, "仅允许同一客户订单合并账单")
+
+    for o in orders:
+        if o.status != 'closed':
+            allocate_fifo(db, o.id, allocated_by)
+
+    allocs = db.query(Allocation).filter(Allocation.order_line_id.in_(order_ids), Allocation.status == 'active').all()
+    return build_bill(db, orders[0].customer_id, [a.id for a in allocs], sale_unit_price)

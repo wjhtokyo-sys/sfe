@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.core.database import Base, engine
 from app.models import entities  # noqa: F401
@@ -17,6 +18,14 @@ app.add_middleware(
 )
 
 Base.metadata.create_all(bind=engine)
+with engine.begin() as conn:
+    cols_user = [r[1] for r in conn.execute(text("PRAGMA table_info(users)")).fetchall()]
+    if 'is_active' not in cols_user:
+        conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+    cols_customer = [r[1] for r in conn.execute(text("PRAGMA table_info(customers)")).fetchall()]
+    if 'is_active' not in cols_customer:
+        conn.execute(text("ALTER TABLE customers ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+
 app.include_router(auth_router)
 app.include_router(sfe_router)
 

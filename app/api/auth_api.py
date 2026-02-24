@@ -12,8 +12,8 @@ router = APIRouter(prefix='/auth', tags=['Auth'])
 @router.post('/customer-login')
 def customer_login(payload: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == payload.username, User.password == payload.password).first()
-    if not user or user.role != 'customer':
-        raise HTTPException(401, 'invalid customer credentials')
+    if not user or user.role != 'customer' or not user.is_active:
+        raise HTTPException(401, '客户账号不可用或密码错误')
     token = issue_token(db, user)
     return {'token': token, 'role': user.role, 'username': user.username}
 
@@ -21,8 +21,8 @@ def customer_login(payload: LoginIn, db: Session = Depends(get_db)):
 @router.post('/admin-login')
 def admin_login(payload: LoginIn, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == payload.username, User.password == payload.password).first()
-    if not user or user.role not in ['admin', 'super_admin']:
-        raise HTTPException(401, 'invalid admin credentials')
+    if not user or user.role not in ['admin', 'super_admin'] or not user.is_active:
+        raise HTTPException(401, '管理员账号不可用或密码错误')
     token = issue_token(db, user)
     return {'token': token, 'role': user.role, 'username': user.username}
 
