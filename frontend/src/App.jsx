@@ -224,6 +224,7 @@ function PurchaseOrderPanel({ authHeaders }) {
   const [rows, setRows] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [importSupplierId, setImportSupplierId] = useState();
+  const [manualSupplierId, setManualSupplierId] = useState();
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRows, setDetailRows] = useState([]);
   const [lineRows, setLineRows] = useState([{ jan: '', item_name: '', qty: undefined, unit_cost: undefined }]);
@@ -245,7 +246,11 @@ function PurchaseOrderPanel({ authHeaders }) {
       <Upload accept='.xlsx' showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { if (!importSupplierId) { message.error('请先选择供应商'); onError(new Error('missing supplier')); return; } const fd = new FormData(); fd.append('supplier_id', importSupplierId); fd.append('file', file); const res = await api.post('/api/purchase-orders/import-excel', fd, { ...authHeaders, headers: { ...authHeaders.headers, 'Content-Type': 'multipart/form-data' } }); const supplierName = suppliers.find(s => s.id === importSupplierId)?.name || ''; message.success(`导入成功：进货单号 ${res.data?.po_no || ''}，导入行数 ${res.data?.rows || 0}，供应商名 ${supplierName}`); load(); onSuccess('ok'); } catch (e) { message.error(e?.response?.data?.detail || '导入失败'); onError(e); } }}><Button className='click-btn' icon={<UploadOutlined />} disabled={!importSupplierId}>批量导入</Button></Upload>
     </Space>
 
-    {lineRows.map((row, idx) => <Space wrap style={{ marginTop: 8 }} key={idx}>
+    <div style={{ marginTop: 8 }}>
+      <Select placeholder='供应商名（手动添加）' style={{ width: 220 }} value={manualSupplierId} options={suppliers.map(s => ({ label: s.name, value: s.id }))} onChange={setManualSupplierId} />
+    </div>
+
+    {lineRows.map((row, idx) => <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap' }} key={idx}>
       <Input placeholder='JAN' value={row.jan} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, jan: e.target.value } : r))} />
       <Input placeholder='品名' value={row.item_name} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, item_name: e.target.value } : r))} />
       <InputNumber placeholder='数量' min={1} value={row.qty} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, qty: v ?? undefined } : r))} />
@@ -253,9 +258,9 @@ function PurchaseOrderPanel({ authHeaders }) {
       {idx === 0 && <>
         <Button className='click-btn' onClick={() => setLineRows([...lineRows, { jan: '', item_name: '', qty: undefined, unit_cost: undefined }])}>行+</Button>
         <Button className='click-btn' onClick={() => lineRows.length > 1 && setLineRows(lineRows.slice(0, -1))}>行-</Button>
-        <Button className='click-btn' type='primary' onClick={async () => { const res = await api.post('/api/purchase-orders/lines', { lines: lineRows }, authHeaders); message.success(`手动添加成功：${res.data?.po_no || ''}（${res.data?.rows || 0}行）`); setLineRows([{ jan: '', item_name: '', qty: undefined, unit_cost: undefined }]); load(); }}>手动添加进货单</Button>
+        <Button className='click-btn' type='primary' onClick={async () => { const res = await api.post('/api/purchase-orders/lines', { supplier_id: manualSupplierId, lines: lineRows }, authHeaders); message.success(`手动添加成功：${res.data?.po_no || ''}（${res.data?.rows || 0}行）`); setLineRows([{ jan: '', item_name: '', qty: undefined, unit_cost: undefined }]); load(); }}>手动添加进货单</Button>
       </>}
-    </Space>)}
+    </div>)}
 
     <Table style={{ marginTop: 8 }} rowKey='id' dataSource={rows} columns={[
       { title: '进货单号', dataIndex: 'po_no' },
