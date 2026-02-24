@@ -167,18 +167,29 @@ def import_items_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             return False
         return default
 
+    def normalize_jan(v):
+        if v is None:
+            return ''
+        if isinstance(v, (int, float)):
+            return str(int(v))
+        s = str(v).strip()
+        if s.endswith('.0') and s.replace('.', '', 1).isdigit():
+            return s[:-2]
+        return s
+
     created = 0
     updated = 0
     try:
+        existing = {normalize_jan(i.jan): i for i in db.query(Item).all()}
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row or not row[0]:
                 continue
             jan, brand, name, spec, msrp_price, in_qty, is_active = (list(row) + [None] * 7)[:7]
-            jan = str(jan).strip()
+            jan = normalize_jan(jan)
             if not jan:
                 continue
 
-            obj = db.query(Item).filter(Item.jan == jan).first()
+            obj = existing.get(jan)
             if obj:
                 obj.brand = str(brand or obj.brand)
                 obj.name = str(name or obj.name)
@@ -188,7 +199,7 @@ def import_items_excel(file: UploadFile = File(...), db: Session = Depends(get_d
                 obj.is_active = to_bool(is_active, obj.is_active)
                 updated += 1
             else:
-                db.add(Item(
+                obj = Item(
                     jan=jan,
                     brand=str(brand or ''),
                     name=str(name or ''),
@@ -196,7 +207,9 @@ def import_items_excel(file: UploadFile = File(...), db: Session = Depends(get_d
                     msrp_price=to_float(msrp_price, 0),
                     in_qty=to_int(in_qty, 1),
                     is_active=to_bool(is_active, True),
-                ))
+                )
+                db.add(obj)
+                existing[jan] = obj
                 created += 1
         db.commit()
     except Exception as e:

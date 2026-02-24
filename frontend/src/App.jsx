@@ -55,11 +55,11 @@ export default function App() {
   const adminMenus = [{ key: 'customers', label: '客户管理' }, { key: 'items_admin', label: '商品信息管理' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单管理' }];
 
   const customerItemCols = [
-    { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '入数', dataIndex: 'in_qty' },
+    { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' },
     { title: '操作', render: (_, row) => <CustomerOrderBtn row={row} me={me} authHeaders={authHeaders} reload={load} /> },
   ];
 
-  const orderCols = [{ title: '订单ID', dataIndex: 'id' }, { title: '客户ID', dataIndex: 'customer_id' }, { title: '商品', dataIndex: 'item_name_snapshot' }, { title: '订货', dataIndex: 'qty_requested' }, { title: '已分配', dataIndex: 'qty_allocated' }, { title: '状态', dataIndex: 'status', render: (v) => <Tag>{v}</Tag> }];
+  const orderCols = [{ title: '订单ID', dataIndex: 'id' }, { title: '客户ID', dataIndex: 'customer_id' }, { title: '商品', dataIndex: 'item_name_snapshot' }, { title: '订货', dataIndex: 'qty_requested' }, { title: '已分配', dataIndex: 'qty_allocated' }, ...(role === 'super_admin' ? [{ title: '状态', dataIndex: 'status', render: (v) => <Tag>{v}</Tag> }] : [])];
 
   const billCols = [{ title: '账单号', dataIndex: 'bill_no' }, { title: '金额', dataIndex: 'total_amount' }, { title: '账单状态', dataIndex: 'status' }, { title: '付款状态', dataIndex: 'payment_status' }, { title: '物流状态', dataIndex: 'shipping_status' }];
 
@@ -78,7 +78,7 @@ export default function App() {
         {role === 'super_admin' && <MergeBillBox orderIds={orderPick} authHeaders={authHeaders} reload={load} />}
       </Card>}
 
-      {menu === 'bills' && <AdminBills authHeaders={authHeaders} bills={data.bills} customers={data.customers} allocations={data.allocations} reload={load} />}
+      {menu === 'bills' && <AdminBills role={role} authHeaders={authHeaders} bills={data.bills} customers={data.customers} allocations={data.allocations} reload={load} />}
       {menu === 'history' && <Card className='panel' title='历史账单'><Table rowKey='id' dataSource={data.bills.filter(b => b.status === 'archived')} columns={billCols} /></Card>}
 
       {role !== 'customer' && menu === 'customers' && <SuperCustomerPanel rows={data.superCustomers} authHeaders={authHeaders} reload={load} />}
@@ -141,7 +141,7 @@ function SuperCustomerPanel({ rows, authHeaders, reload }) {
 function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
   const [edit, setEdit] = useState(null);
   const [newItem, setNewItem] = useState({ jan: '', brand: '', name: '', spec: '', msrp_price: 0, in_qty: 1, is_active: true });
-  const cols = [{ title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '入数', dataIndex: 'in_qty' }, { title: '操作', render: (_, r) => <Button className='click-btn' onClick={() => setEdit(r)}>修改</Button> }];
+  const cols = [{ title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' }, { title: '操作', render: (_, r) => <Button className='click-btn' onClick={() => setEdit(r)}>修改</Button> }];
   return <Card className='panel' title='商品信息管理'>
     <Space wrap>
       <Input placeholder='按JAN或关键字检索' value={kw} onChange={(e) => setKw(e.target.value)} />
@@ -164,7 +164,7 @@ function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
     </Space>
     <Table rowKey='id' dataSource={items} columns={cols} style={{ marginTop: 8 }} />
     <Modal open={!!edit} title='修改商品信息' onCancel={() => setEdit(null)} onOk={async () => { await api.patch(`/api/items/${edit.id}`, edit, authHeaders); message.success('修改成功'); setEdit(null); load(); }}>
-      {edit && <Space direction='vertical' style={{ width: '100%' }}><Input value={edit.jan} onChange={(e) => setEdit({ ...edit, jan: e.target.value })} /><Input value={edit.brand} onChange={(e) => setEdit({ ...edit, brand: e.target.value })} /><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /><InputNumber value={edit.in_qty} onChange={(v) => setEdit({ ...edit, in_qty: v || 1 })} style={{ width: '100%' }} /></Space>}
+      {edit && <Space direction='vertical' style={{ width: '100%' }}><Input value={edit.jan} onChange={(e) => setEdit({ ...edit, jan: e.target.value })} /><Input value={edit.brand} onChange={(e) => setEdit({ ...edit, brand: e.target.value })} /><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /><InputNumber value={edit.msrp_price} onChange={(v) => setEdit({ ...edit, msrp_price: v || 0 })} style={{ width: '100%' }} placeholder='零售价' /><InputNumber value={edit.in_qty} onChange={(v) => setEdit({ ...edit, in_qty: v || 1 })} style={{ width: '100%' }} /></Space>}
     </Modal>
   </Card>;
 }
@@ -174,7 +174,7 @@ function MergeBillBox({ orderIds, authHeaders, reload }) {
   return <Space style={{ marginTop: 8 }}><InputNumber min={1} value={price} onChange={(v) => setPrice(v || 1)} /><Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/bills/from-orders', { order_ids: orderIds, sale_unit_price: price }, authHeaders); message.success('已合并生成新账单'); reload(); }}>合并选中订单生成账单</Button></Space>;
 }
 
-function AdminBills({ authHeaders, bills, customers, allocations, reload }) {
+function AdminBills({ role, authHeaders, bills, customers, allocations, reload }) {
   const [c, setC] = useState(); const [ids, setIds] = useState(''); const [price, setPrice] = useState(1); const [bid, setBid] = useState(); const [act, setAct] = useState('pay');
   const [editBill, setEditBill] = useState(null);
   const cnStatus = (t, v) => ({
@@ -184,11 +184,11 @@ function AdminBills({ authHeaders, bills, customers, allocations, reload }) {
   }[t][v] || v);
   const activeBills = bills.filter(b => b.status !== 'archived').map(b => ({ ...b, customer_name: customers.find(cu => cu.id === b.customer_id)?.name || `客户${b.customer_id}` }));
   return <Card className='panel' title='账单管理'>
-    <Space><Select placeholder='客户' style={{ width: 180 }} options={customers.map(x => ({ label: x.name, value: x.id }))} onChange={setC} /><Input placeholder='分配ID 例 1,2' style={{ width: 220 }} value={ids} onChange={(e) => setIds(e.target.value)} /><InputNumber min={1} value={price} onChange={(v) => setPrice(v || 1)} /><Button className='click-btn' onClick={async () => { await api.post('/api/bills', { customer_id: c, allocation_ids: ids.split(',').map(s => Number(s.trim())).filter(Boolean), sale_unit_price: price }, authHeaders); message.success('账单生成成功'); reload(); }}>生成账单</Button></Space>
+    {role === 'super_admin' && <Space><Select placeholder='客户' style={{ width: 180 }} options={customers.map(x => ({ label: x.name, value: x.id }))} onChange={setC} /><Input placeholder='分配ID 例 1,2' style={{ width: 220 }} value={ids} onChange={(e) => setIds(e.target.value)} /><InputNumber min={1} value={price} onChange={(v) => setPrice(v || 1)} /><Button className='click-btn' onClick={async () => { await api.post('/api/bills', { customer_id: c, allocation_ids: ids.split(',').map(s => Number(s.trim())).filter(Boolean), sale_unit_price: price }, authHeaders); message.success('账单生成成功'); reload(); }}>生成账单</Button></Space>}
     <Space style={{ marginTop: 8 }}><Select placeholder='选择账单' style={{ width: 180 }} options={activeBills.map(b => ({ label: b.bill_no, value: b.id }))} onChange={setBid} /><Select style={{ width: 180 }} value={act} onChange={setAct} options={[{ label: '付款', value: 'pay' }, { label: '确认收款', value: 'confirm_receipt' }, { label: '发货', value: 'ship' }, { label: '收货', value: 'deliver' }, { label: '归档', value: 'archive' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/bills/${bid}/state`, { action: act }, authHeaders); message.success('状态更新成功'); reload(); }}>状态推进</Button></Space>
     <Table rowKey='id' dataSource={activeBills} columns={[
       { title: '账单号', dataIndex: 'bill_no' },
-      { title: '客户名', dataIndex: 'customer_name' },
+      ...(role === 'super_admin' ? [{ title: '客户名', dataIndex: 'customer_name' }] : []),
       { title: '金额', dataIndex: 'total_amount' },
       { title: '账单状态', dataIndex: 'status', render: (v) => cnStatus('status', v) },
       { title: '付款状态', dataIndex: 'payment_status', render: (v) => cnStatus('payment_status', v) },
