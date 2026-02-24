@@ -24,6 +24,24 @@ def list_customers(db: Session = Depends(get_db), _=Depends(require_roles('admin
     return db.query(Customer).order_by(Customer.id.desc()).all()
 
 
+@router.post('/super/customers')
+def super_create_customer_user(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    username = str(payload.get('username', '')).strip()
+    password = str(payload.get('password', '')).strip()
+    customer_name = str(payload.get('customer_name', '')).strip()
+    if not username or not password or not customer_name:
+        raise HTTPException(400, '请填写完整客户账号信息')
+    if db.query(User).filter(User.username == username).first():
+        raise HTTPException(400, '用户名已存在')
+    c = Customer(name=customer_name, is_active=True)
+    db.add(c)
+    db.flush()
+    u = User(username=username, password=password, role='customer', customer_id=c.id, is_active=True)
+    db.add(u)
+    db.commit()
+    return {'ok': True}
+
+
 @router.get('/super/customers')
 def super_customer_users(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     users = db.query(User).filter(User.role == 'customer').order_by(User.id.desc()).all()
