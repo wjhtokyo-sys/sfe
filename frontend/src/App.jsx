@@ -250,11 +250,11 @@ function PurchaseOrderPanel({ authHeaders }) {
       <Select placeholder='供应商名（手动添加）' style={{ width: 220 }} value={manualSupplierId} options={suppliers.map(s => ({ label: s.name, value: s.id }))} onChange={setManualSupplierId} />
     </div>
 
-    {lineRows.map((row, idx) => <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap' }} key={idx}>
-      <Input placeholder='JAN' value={row.jan} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, jan: e.target.value } : r))} />
-      <Input placeholder='品名' value={row.item_name} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, item_name: e.target.value } : r))} />
-      <InputNumber placeholder='数量' min={1} value={row.qty} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, qty: v ?? undefined } : r))} />
-      <InputNumber placeholder='进货单价' min={0} value={row.unit_cost} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, unit_cost: v ?? undefined } : r))} />
+    {lineRows.map((row, idx) => <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap', justifyContent: 'flex-start' }} key={idx}>
+      <Input style={{ width: '20ch' }} placeholder='JAN' value={row.jan} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, jan: e.target.value } : r))} />
+      <Input style={{ width: '60ch' }} placeholder='品名' value={row.item_name} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, item_name: e.target.value } : r))} />
+      <InputNumber style={{ width: '10ch' }} placeholder='数量' min={1} value={row.qty} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, qty: v ?? undefined } : r))} />
+      <InputNumber style={{ width: '15ch' }} placeholder='进货单价' min={0} value={row.unit_cost} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, unit_cost: v ?? undefined } : r))} />
       {idx === 0 && <>
         <Button className='click-btn' onClick={() => setLineRows([...lineRows, { jan: '', item_name: '', qty: undefined, unit_cost: undefined }])}>行+</Button>
         <Button className='click-btn' onClick={() => lineRows.length > 1 && setLineRows(lineRows.slice(0, -1))}>行-</Button>
