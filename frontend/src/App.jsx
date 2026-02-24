@@ -70,7 +70,7 @@ export default function App() {
   </div>;
 
   const customerMenus = [{ key: 'items', label: '商品信息查询' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }];
-  const adminMenus = [{ key: 'customers', label: '客户管理' }, { key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: '客户订单管理' }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货未盘点' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单管理' }];
+  const adminMenus = [{ key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: '客户订单管理' }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货未盘点' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单管理' }, { key: 'suppliers', label: '供应商管理' }, { key: 'customers', label: '客户管理' }];
 
   const customerItemCols = [
     { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' },
@@ -110,6 +110,8 @@ export default function App() {
 
       {menu === 'bills' && <AdminBills role={role} authHeaders={authHeaders} bills={data.bills} customers={data.customers} allocations={data.allocations} reload={load} />}
       {menu === 'history' && <Card className='panel' title='历史账单'><Table rowKey='id' dataSource={data.bills.filter(b => b.status === 'archived')} columns={billCols} /></Card>}
+
+      {role !== 'customer' && menu === 'suppliers' && <Card className='panel' title='供应商管理' />}
 
       {role !== 'customer' && menu === 'customers' && <SuperCustomerPanel rows={data.superCustomers} authHeaders={authHeaders} reload={load} />}
 
