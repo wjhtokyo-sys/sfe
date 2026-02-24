@@ -226,7 +226,7 @@ function PurchaseOrderPanel({ authHeaders }) {
   const [importSupplierId, setImportSupplierId] = useState();
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRows, setDetailRows] = useState([]);
-  const [line, setLine] = useState({ supplier_id: undefined, jan: '', item_name: '', qty: undefined, unit_cost: undefined, payment_status: 'unpaid' });
+  const [lineRows, setLineRows] = useState([{ jan: '', item_name: '', qty: undefined, unit_cost: undefined }]);
 
   const load = async () => {
     const [po, sp] = await Promise.all([api.get('/api/purchase-orders', authHeaders).then(r => r.data), api.get('/api/suppliers', authHeaders).then(r => r.data)]);
@@ -245,14 +245,17 @@ function PurchaseOrderPanel({ authHeaders }) {
       <Upload accept='.xlsx' showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { if (!importSupplierId) { message.error('请先选择供应商'); onError(new Error('missing supplier')); return; } const fd = new FormData(); fd.append('supplier_id', importSupplierId); fd.append('file', file); const res = await api.post('/api/purchase-orders/import-excel', fd, { ...authHeaders, headers: { ...authHeaders.headers, 'Content-Type': 'multipart/form-data' } }); const supplierName = suppliers.find(s => s.id === importSupplierId)?.name || ''; message.success(`导入成功：进货单号 ${res.data?.po_no || ''}，导入行数 ${res.data?.rows || 0}，供应商名 ${supplierName}`); load(); onSuccess('ok'); } catch (e) { message.error(e?.response?.data?.detail || '导入失败'); onError(e); } }}><Button className='click-btn' icon={<UploadOutlined />} disabled={!importSupplierId}>批量导入</Button></Upload>
     </Space>
 
-    <Space wrap style={{ marginTop: 8 }}>
-      <Select placeholder='供应商名' style={{ width: 180 }} value={line.supplier_id} options={suppliers.map(s => ({ label: s.name, value: s.id }))} onChange={(v) => setLine({ ...line, supplier_id: v })} />
-      <Input placeholder='JAN' value={line.jan} onChange={(e) => setLine({ ...line, jan: e.target.value })} />
-      <Input placeholder='品名' value={line.item_name} onChange={(e) => setLine({ ...line, item_name: e.target.value })} />
-      <InputNumber placeholder='数量' min={1} value={line.qty} onChange={(v) => setLine({ ...line, qty: v ?? undefined })} />
-      <InputNumber placeholder='进货单价' min={0} value={line.unit_cost} onChange={(v) => setLine({ ...line, unit_cost: v ?? undefined })} />
-      <Button className='click-btn' type='primary' onClick={async () => { const res = await api.post('/api/purchase-orders/lines', line, authHeaders); message.success(`手动添加成功：${res.data?.po_no || ''}`); setLine({ supplier_id: undefined, jan: '', item_name: '', qty: undefined, unit_cost: undefined, payment_status: 'unpaid' }); load(); }}>手动添加进货单</Button>
-    </Space>
+    {lineRows.map((row, idx) => <Space wrap style={{ marginTop: 8 }} key={idx}>
+      <Input placeholder='JAN' value={row.jan} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, jan: e.target.value } : r))} />
+      <Input placeholder='品名' value={row.item_name} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, item_name: e.target.value } : r))} />
+      <InputNumber placeholder='数量' min={1} value={row.qty} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, qty: v ?? undefined } : r))} />
+      <InputNumber placeholder='进货单价' min={0} value={row.unit_cost} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, unit_cost: v ?? undefined } : r))} />
+      {idx === 0 && <>
+        <Button className='click-btn' onClick={() => setLineRows([...lineRows, { jan: '', item_name: '', qty: undefined, unit_cost: undefined }])}>行+</Button>
+        <Button className='click-btn' onClick={() => lineRows.length > 1 && setLineRows(lineRows.slice(0, -1))}>行-</Button>
+        <Button className='click-btn' type='primary' onClick={async () => { const res = await api.post('/api/purchase-orders/lines', { lines: lineRows }, authHeaders); message.success(`手动添加成功：${res.data?.po_no || ''}（${res.data?.rows || 0}行）`); setLineRows([{ jan: '', item_name: '', qty: undefined, unit_cost: undefined }]); load(); }}>手动添加进货单</Button>
+      </>}
+    </Space>)}
 
     <Table style={{ marginTop: 8 }} rowKey='id' dataSource={rows} columns={[
       { title: '进货单号', dataIndex: 'po_no' },

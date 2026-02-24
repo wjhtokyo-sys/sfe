@@ -244,9 +244,32 @@ def list_purchase_order_lines(po_id: int, db: Session = Depends(get_db), _=Depen
 @router.post('/purchase-orders/lines')
 def add_purchase_order_line(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     supplier_id = int(payload.get('supplier_id') or 0)
-    supplier = db.get(Supplier, supplier_id)
+    supplier = db.get(Supplier, supplier_id) if supplier_id else None
     if not supplier:
-        raise HTTPException(400, '请选择有效供应商')
+        supplier = db.query(Supplier).filter(Supplier.supplier_code == 'NOSUP').first()
+        if not supplier:
+            supplier = Supplier(supplier_code='NOSUP', name='未指定供应商', is_active=True)
+            db.add(supplier)
+            db.flush()
+
+    rows = payload.get('lines') if isinstance(payload.get('lines'), list) else [payload]
+    parsed = []
+    for r in rows:
+        jan = str(r.get('jan', '')).strip()
+        item_name = str(r.get('item_name', '')).strip()
+        qty = r.get('qty')
+        unit_cost = r.get('unit_cost')
+        if not jan or not item_name or qty in (None, '') or unit_cost in (None, ''):
+            continue
+        parsed.append({
+            'jan': jan,
+            'item_name': item_name,
+            'qty': int(qty),
+            'unit_cost': float(unit_cost),
+        })
+
+    if not parsed:
+        raise HTTPException(400, '至少填写一行完整的到货信息')
 
     po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S%f')}{supplier.supplier_code}"
     while db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first():
@@ -254,7 +277,7 @@ def add_purchase_order_line(payload: dict, db: Session = Depends(get_db), _=Depe
 
     po = PurchaseOrder(
         po_no=po_no,
-        supplier_id=supplier_id,
+        supplier_id=supplier.id,
         payment_status=str(payload.get('payment_status') or 'unpaid'),
         status='created_unchecked',
         purchased_at=datetime.now(),
@@ -262,20 +285,22 @@ def add_purchase_order_line(payload: dict, db: Session = Depends(get_db), _=Depe
     db.add(po)
     db.flush()
 
-    qty = int(payload.get('qty') or 0)
-    unit_cost = float(payload.get('unit_cost') or 0)
-    line_total = qty * unit_cost
-    db.add(PurchaseOrderLine(
-        purchase_order_id=po.id,
-        jan=str(payload.get('jan')).strip(),
-        item_name_snapshot=str(payload.get('item_name')).strip(),
-        qty=qty,
-        unit_cost=unit_cost,
-        line_total=line_total,
-    ))
-    po.total_cost = line_total
+    total = 0.0
+    for p in parsed:
+        line_total = p['qty'] * p['unit_cost']
+        total += line_total
+        db.add(PurchaseOrderLine(
+            purchase_order_id=po.id,
+            jan=p['jan'],
+            item_name_snapshot=p['item_name'],
+            qty=p['qty'],
+            unit_cost=p['unit_cost'],
+            line_total=line_total,
+        ))
+
+    po.total_cost = total
     db.commit()
-    return {'ok': True, 'po_no': po_no}
+    return {'ok': True, 'po_no': po_no, 'rows': len(parsed)}
 
 
 @router.delete('/purchase-orders/{po_id}')
