@@ -34,9 +34,14 @@ export default function App() {
 
   const load = async () => {
     if (!token) return;
-    const meInfo = await api.get('/auth/me', authHeaders).then(r => r.data);
+    const ts = Date.now();
+    const noCacheHeaders = { ...authHeaders, headers: { ...authHeaders.headers, 'Cache-Control': 'no-cache', Pragma: 'no-cache' } };
+    const meInfo = await api.get(`/auth/me?_ts=${ts}`, noCacheHeaders).then(r => r.data);
     setMe(meInfo);
-    const req = (u) => api.get(u, authHeaders).then(r => r.data).catch(() => []);
+    const req = (u) => {
+      const sep = u.includes('?') ? '&' : '?';
+      return api.get(`${u}${sep}_ts=${ts}`, noCacheHeaders).then(r => r.data).catch(() => []);
+    };
     const [items, orders, bills, customers, lots, allocations, superCustomers] = await Promise.all([
       req(`/api/items${kw ? `?keyword=${encodeURIComponent(kw)}` : ''}`),
       req('/api/orders'), req('/api/bills'), req('/api/customers'), req('/api/lots'), req('/api/allocations'), req('/api/super/customers'),
