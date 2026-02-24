@@ -45,6 +45,12 @@ export default function App() {
 
   useEffect(() => { if (token) load(); }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    if (role === 'super_admin') setMenu('items_admin');
+    if (role === 'customer') setMenu('items');
+  }, [token, role]);
+
   if (!token) return <div className='page'>
     <Title level={3}>SFE 登录入口</Title>
     <Card title='客户登录入口页' className='login-wrap'><Form onFinish={(v) => login('/auth/customer-login', v)}><Form.Item name='username' rules={[{ required: true }]}><Input placeholder='客户账号' /></Form.Item><Form.Item name='password' rules={[{ required: true }]}><Input.Password placeholder='密码' /></Form.Item><Button className='click-btn' htmlType='submit' type='primary'>客户登录</Button></Form></Card>
@@ -52,7 +58,7 @@ export default function App() {
   </div>;
 
   const customerMenus = [{ key: 'items', label: '商品信息查询' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }];
-  const adminMenus = [{ key: 'customers', label: '客户管理' }, { key: 'items_admin', label: '商品信息管理' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单管理' }];
+  const adminMenus = [{ key: 'customers', label: '客户管理' }, { key: 'items_admin', label: '商品信息管理' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'orders', label: '客户订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单管理' }];
 
   const customerItemCols = [
     { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' },
@@ -68,14 +74,13 @@ export default function App() {
     <Layout><Content className='page'>
       <Space><Button className='click-btn' onClick={load}>刷新</Button><Button className='click-btn' danger onClick={logout}>登出</Button></Space>
 
-      {menu === 'items' && <Card className='panel' title='商品信息查询'>
+      {role === 'customer' && menu === 'items' && <Card className='panel' title='商品信息查询'>
         <Space><Input placeholder='按JAN或关键字检索' value={kw} onChange={(e) => setKw(e.target.value)} /><Button className='click-btn' onClick={load}>搜索</Button></Space>
         <Table rowKey='id' dataSource={data.items} columns={customerItemCols} style={{ marginTop: 8 }} />
       </Card>}
 
-      {menu === 'orders' && <Card className='panel' title='订单管理'>
-        <Table rowKey='id' dataSource={data.orders} columns={orderCols} rowSelection={role === 'super_admin' ? { onChange: (keys) => setOrderPick(keys) } : undefined} />
-        {role === 'super_admin' && <MergeBillBox orderIds={orderPick} authHeaders={authHeaders} reload={load} />}
+      {menu === 'orders' && <Card className='panel' title={role === 'super_admin' ? '客户订单管理' : '订单管理'}>
+        <Table rowKey='id' dataSource={data.orders} columns={orderCols} />
       </Card>}
 
       {menu === 'bills' && <AdminBills role={role} authHeaders={authHeaders} bills={data.bills} customers={data.customers} allocations={data.allocations} reload={load} />}
