@@ -11,13 +11,14 @@ BILL_TRANSITIONS = {
     "shipping_status": {"not_shipped": ["shipped"], "shipped": ["delivered"], "delivered": []},
 }
 
-BILL_STAGE_FLOW = ["created", "paid", "confirmed", "shipped", "received"]
+BILL_STAGE_FLOW = ["created", "paid", "confirmed", "shipped", "received", "archived"]
 BILL_STAGE_LABEL = {
     "created": "已创建",
     "paid": "已支付",
     "confirmed": "已确认支付",
     "shipped": "已发货",
     "received": "已收货",
+    "archived": "已归档",
 }
 
 
@@ -177,6 +178,8 @@ def build_bill(db: Session, customer_id: int, allocation_ids: list[int], sale_un
 
 
 def get_bill_stage(bill: Bill) -> str:
+    if bill.status == 'archived':
+        return 'archived'
     if bill.shipping_status == "delivered":
         return "received"
     if bill.shipping_status == "shipped":
@@ -215,6 +218,11 @@ def set_bill_stage(bill: Bill, stage: str):
         bill.payment_status = "received"
         bill.payment_confirmed_at = bill.payment_confirmed_at or datetime.utcnow()
         bill.shipping_status = "delivered"
+    elif stage == "archived":
+        bill.status = 'archived'
+        bill.payment_status = 'received'
+        bill.shipping_status = 'delivered'
+        bill.archived_at = datetime.utcnow()
 
 
 def update_bill_state(db: Session, bill_id: int, action: str, actor_role: str):
@@ -227,6 +235,7 @@ def update_bill_state(db: Session, bill_id: int, action: str, actor_role: str):
         "confirm_receipt": "confirmed",
         "ship": "shipped",
         "deliver": "received",
+        "archive": "archived",
         "created": "created",
     }
     if action not in action_to_stage:

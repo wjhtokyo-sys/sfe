@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_roles
 from app.core.database import get_db
-from app.models.entities import Allocation, Bill, Customer, CustomerOrder, InventoryLot, Item, User
+from app.models.entities import Allocation, Bill, BillLine, Customer, CustomerOrder, InventoryLot, Item, User
 from app.schemas.sfe import AllocateIn, BuildBillIn, CustomerIn, ItemIn, LotIn, OrderIn, StateActionIn
 from app.services import sfe_service
 
@@ -289,6 +289,18 @@ def list_bills(db: Session = Depends(get_db), user=Depends(get_current_user)):
     if user.role == 'customer':
         q = q.filter(Bill.customer_id == user.customer_id)
     return q.order_by(Bill.id.desc()).all()
+
+
+@router.get('/bills/{bill_id}/lines')
+def bill_lines(bill_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    bill = db.get(Bill, bill_id)
+    if not bill:
+        raise HTTPException(404, '账单不存在')
+    if user.role == 'customer' and user.customer_id != bill.customer_id:
+        raise HTTPException(403, '没有权限')
+
+    lines = db.query(BillLine).filter(BillLine.bill_id == bill_id).order_by(BillLine.id.asc()).all()
+    return lines
 
 
 @router.post("/bills/{bill_id}/state")

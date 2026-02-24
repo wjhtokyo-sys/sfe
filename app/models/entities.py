@@ -88,6 +88,7 @@ class Bill(Base, TimestampMixin):
     total_amount: Mapped[float] = mapped_column(Float, default=0)
     currency: Mapped[str] = mapped_column(String(8), default="CNY")
     payment_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class BillLine(Base, TimestampMixin):

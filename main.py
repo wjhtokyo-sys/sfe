@@ -26,6 +26,9 @@ with engine.begin() as conn:
     cols_customer = [r[1] for r in conn.execute(text("PRAGMA table_info(customers)")).fetchall()]
     if 'is_active' not in cols_customer:
         conn.execute(text("ALTER TABLE customers ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+    cols_bill = [r[1] for r in conn.execute(text("PRAGMA table_info(bills)")).fetchall()]
+    if 'archived_at' not in cols_bill:
+        conn.execute(text("ALTER TABLE bills ADD COLUMN archived_at DATETIME"))
 
 seed_run()
 app.include_router(auth_router)

@@ -70,7 +70,7 @@ export default function App() {
   </div>;
 
   const customerMenus = [{ key: 'items', label: '商品信息查询' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }];
-  const adminMenus = [{ key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: '客户订单管理' }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货未盘点' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单管理' }, { key: 'suppliers', label: '供应商管理' }, { key: 'customers', label: '客户管理' }];
+  const adminMenus = [{ key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: '客户订单管理' }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货未盘点' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }, { key: 'suppliers', label: '供应商管理' }, { key: 'customers', label: '客户管理' }];
 
   const customerItemCols = [
     { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' },
@@ -109,7 +109,7 @@ export default function App() {
       </Card>}
 
       {menu === 'bills' && <AdminBills role={role} authHeaders={authHeaders} bills={data.bills} customers={data.customers} allocations={data.allocations} reload={load} />}
-      {menu === 'history' && <Card className='panel' title='历史账单'><Table rowKey='id' dataSource={data.bills.filter(b => b.status === 'archived')} columns={billCols} /></Card>}
+      {menu === 'history' && <HistoryBillsPanel role={role} bills={data.bills} customers={data.customers} authHeaders={authHeaders} />}
 
       {role !== 'customer' && menu === 'suppliers' && <Card className='panel' title='供应商管理' />}
 
@@ -213,6 +213,7 @@ function MergeBillBox({ orderIds, authHeaders, reload }) {
 function AdminBills({ role, authHeaders, bills, customers, allocations, reload }) {
   const [c, setC] = useState(); const [ids, setIds] = useState(''); const [price, setPrice] = useState(1); const [bid, setBid] = useState(); const [act, setAct] = useState('pay');
   const stageLabel = (b) => {
+    if (b.status === 'archived') return '已归档';
     if (b.shipping_status === 'delivered') return '已收货';
     if (b.shipping_status === 'shipped') return '已发货';
     if (b.payment_status === 'received') return '已确认支付';
@@ -222,7 +223,7 @@ function AdminBills({ role, authHeaders, bills, customers, allocations, reload }
   const activeBills = bills.filter(b => b.status !== 'archived').map(b => ({ ...b, customer_name: customers.find(cu => cu.id === b.customer_id)?.name || `客户${b.customer_id}` }));
   const actionOptions = role === 'customer'
     ? [{ label: '已支付', value: 'pay' }, { label: '已收货', value: 'deliver' }]
-    : [{ label: '已创建', value: 'created' }, { label: '已支付', value: 'pay' }, { label: '已确认支付', value: 'confirm_receipt' }, { label: '已发货', value: 'ship' }, { label: '已收货', value: 'deliver' }];
+    : [{ label: '已创建', value: 'created' }, { label: '已支付', value: 'pay' }, { label: '已确认支付', value: 'confirm_receipt' }, { label: '已发货', value: 'ship' }, { label: '已收货', value: 'deliver' }, { label: '已归档', value: 'archive' }];
 
   return <Card className='panel' title='账单管理'>
     {role === 'super_admin' && <Space><Select placeholder='客户' style={{ width: 180 }} options={customers.map(x => ({ label: x.name, value: x.id }))} onChange={setC} /><Input placeholder='分配ID 例 1,2' style={{ width: 220 }} value={ids} onChange={(e) => setIds(e.target.value)} /><InputNumber min={1} value={price} onChange={(v) => setPrice(v || 1)} /><Button className='click-btn' onClick={async () => { await api.post('/api/bills', { customer_id: c, allocation_ids: ids.split(',').map(s => Number(s.trim())).filter(Boolean), sale_unit_price: price }, authHeaders); message.success('账单生成成功'); reload(); }}>生成账单</Button></Space>}
@@ -233,5 +234,40 @@ function AdminBills({ role, authHeaders, bills, customers, allocations, reload }
       { title: '金额', dataIndex: 'total_amount' },
       { title: '账单状态', render: (_, r) => stageLabel(r) },
     ]} style={{ marginTop: 8 }} />
+  </Card>;
+}
+
+function HistoryBillsPanel({ role, bills, customers, authHeaders }) {
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailRows, setDetailRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const rows = bills.filter(b => b.status === 'archived').map(b => ({ ...b, customer_name: customers.find(cu => cu.id === b.customer_id)?.name || `客户${b.customer_id}` }));
+  const fmt = (v) => {
+    const d = v ? new Date(v) : null;
+    if (!d || Number.isNaN(d.getTime())) return '-';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${day} ${hh}:${mm}`;
+  };
+  return <Card className='panel' title='历史账单'>
+    <Table rowKey='id' dataSource={rows} columns={[
+      { title: '账单号', dataIndex: 'bill_no' },
+      { title: '账单金额', dataIndex: 'total_amount' },
+      { title: '客户', dataIndex: 'customer_name' },
+      { title: '归档时间', dataIndex: 'archived_at', render: fmt },
+      { title: '操作', render: (_, r) => <Button className='click-btn' loading={loading} onClick={async () => { setLoading(true); try { const res = await api.get(`/api/bills/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); } finally { setLoading(false); } }}>查看账单明细</Button> },
+    ]} />
+    <Modal open={detailOpen} title='账单明细' footer={null} onCancel={() => setDetailOpen(false)} width={760}>
+      <Table rowKey='id' pagination={false} dataSource={detailRows} columns={[
+        { title: 'JAN', dataIndex: 'jan_snapshot' },
+        { title: '商品名', dataIndex: 'item_name_snapshot' },
+        { title: '数量', dataIndex: 'qty' },
+        { title: '单价', dataIndex: 'sale_unit_price' },
+        { title: '金额', dataIndex: 'line_amount' },
+      ]} />
+    </Modal>
   </Card>;
 }
