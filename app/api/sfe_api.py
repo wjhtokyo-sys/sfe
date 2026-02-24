@@ -64,16 +64,26 @@ def super_update_customer_user(user_id: int, payload: dict, db: Session = Depend
     u = db.get(User, user_id)
     if not u or u.role != 'customer':
         raise HTTPException(404, '客户用户不存在')
+
+    new_username = str(payload.get('username', '')).strip()
+    if new_username and new_username != u.username:
+        exists = db.query(User).filter(User.username == new_username, User.id != user_id).first()
+        if exists:
+            raise HTTPException(400, '用户名已存在')
+        u.username = new_username
+
     if 'password' in payload and payload['password']:
         u.password = payload['password']
     if 'is_active' in payload:
         u.is_active = bool(payload['is_active'])
+
     if u.customer_id:
         c = db.get(Customer, u.customer_id)
         if c and 'is_active' in payload:
             c.is_active = bool(payload['is_active'])
         if c and payload.get('customer_name'):
-            c.name = payload['customer_name']
+            c.name = str(payload['customer_name']).strip()
+
     db.commit()
     return {'ok': True}
 
@@ -128,27 +138,71 @@ def item_import_template(_=Depends(require_roles('super_admin'))):
 
 @router.post('/items/import-excel')
 def import_items_excel(file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
-    wb = load_workbook(filename=BytesIO(file.file.read()))
-    ws = wb.active
+    try:
+        raw = file.file.read()
+        wb = load_workbook(filename=BytesIO(raw), data_only=True)
+        ws = wb.active
+    except Exception:
+        raise HTTPException(400, 'Excel文件解析失败，请使用模板并保存为xlsx后重试')
+
+    def to_float(v, default=0.0):
+        if v is None or str(v).strip() == '':
+            return default
+        return float(v)
+
+    def to_int(v, default=1):
+        if v is None or str(v).strip() == '':
+            return default
+        return int(float(v))
+
+    def to_bool(v, default=True):
+        if v is None or str(v).strip() == '':
+            return default
+        if isinstance(v, bool):
+            return v
+        s = str(v).strip().lower()
+        if s in {'1', 'true', 'yes', 'y', '是', '启用'}:
+            return True
+        if s in {'0', 'false', 'no', 'n', '否', '停用'}:
+            return False
+        return default
+
     created = 0
     updated = 0
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if not row or not row[0]:
-            continue
-        jan, brand, name, spec, msrp_price, in_qty, is_active = row[:7]
-        obj = db.query(Item).filter(Item.jan == str(jan)).first()
-        if obj:
-            obj.brand = str(brand or obj.brand)
-            obj.name = str(name or obj.name)
-            obj.spec = str(spec) if spec else None
-            obj.msrp_price = float(msrp_price or 0)
-            obj.in_qty = int(in_qty or 1)
-            obj.is_active = bool(is_active)
-            updated += 1
-        else:
-            db.add(Item(jan=str(jan), brand=str(brand or ''), name=str(name or ''), spec=str(spec) if spec else None, msrp_price=float(msrp_price or 0), in_qty=int(in_qty or 1), is_active=bool(is_active)))
-            created += 1
-    db.commit()
+    try:
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or not row[0]:
+                continue
+            jan, brand, name, spec, msrp_price, in_qty, is_active = (list(row) + [None] * 7)[:7]
+            jan = str(jan).strip()
+            if not jan:
+                continue
+
+            obj = db.query(Item).filter(Item.jan == jan).first()
+            if obj:
+                obj.brand = str(brand or obj.brand)
+                obj.name = str(name or obj.name)
+                obj.spec = str(spec) if spec else None
+                obj.msrp_price = to_float(msrp_price, obj.msrp_price or 0)
+                obj.in_qty = to_int(in_qty, obj.in_qty or 1)
+                obj.is_active = to_bool(is_active, obj.is_active)
+                updated += 1
+            else:
+                db.add(Item(
+                    jan=jan,
+                    brand=str(brand or ''),
+                    name=str(name or ''),
+                    spec=str(spec) if spec else None,
+                    msrp_price=to_float(msrp_price, 0),
+                    in_qty=to_int(in_qty, 1),
+                    is_active=to_bool(is_active, True),
+                ))
+                created += 1
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(400, f'上传失败：{e}')
+
     return {'created': created, 'updated': updated}
 
 
@@ -208,6 +262,30 @@ def list_bills(db: Session = Depends(get_db), user=Depends(get_current_user)):
 @router.post("/bills/{bill_id}/state")
 def bill_state_action(bill_id: int, payload: StateActionIn, db: Session = Depends(get_db), _=Depends(require_roles('admin', 'super_admin'))):
     return sfe_service.update_bill_state(db, bill_id, payload.action)
+
+
+@router.patch('/bills/{bill_id}')
+def update_bill(bill_id: int, payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    bill = db.get(Bill, bill_id)
+    if not bill:
+        raise HTTPException(404, '账单不存在')
+
+    if 'bill_no' in payload and payload['bill_no']:
+        new_no = str(payload['bill_no']).strip()
+        exists = db.query(Bill).filter(Bill.bill_no == new_no, Bill.id != bill_id).first()
+        if exists:
+            raise HTTPException(400, '账单号已存在')
+        bill.bill_no = new_no
+
+    for k in ['status', 'payment_status', 'shipping_status', 'currency']:
+        if k in payload and payload[k]:
+            setattr(bill, k, payload[k])
+
+    if 'total_amount' in payload and payload['total_amount'] is not None:
+        bill.total_amount = float(payload['total_amount'])
+
+    db.commit()
+    return {'ok': True}
 
 
 @router.post('/fifo/pending/{allocation_id}/resolve')
