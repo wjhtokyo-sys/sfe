@@ -230,7 +230,7 @@ def import_purchase_order_excel(supplier_id: int = Form(...), file: UploadFile =
 
 @router.get('/purchase-orders')
 def list_purchase_orders(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
-    return db.query(PurchaseOrder).order_by(PurchaseOrder.id.desc()).all()
+    return db.query(PurchaseOrder).order_by(PurchaseOrder.purchased_at.desc(), PurchaseOrder.id.desc()).all()
 
 
 @router.get('/purchase-orders/{po_id}/lines')
@@ -243,18 +243,25 @@ def list_purchase_order_lines(po_id: int, db: Session = Depends(get_db), _=Depen
 
 @router.post('/purchase-orders/lines')
 def add_purchase_order_line(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
-    po_no = str(payload.get('po_no', '')).strip()
-    po = db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first()
-    if not po:
-        po = PurchaseOrder(
-            po_no=po_no,
-            supplier_id=int(payload.get('supplier_id')),
-            payment_status=str(payload.get('payment_status') or 'unpaid'),
-            status='created_unchecked',
-            purchased_at=payload.get('purchased_at'),
-        )
-        db.add(po)
-        db.flush()
+    supplier_id = int(payload.get('supplier_id') or 0)
+    supplier = db.get(Supplier, supplier_id)
+    if not supplier:
+        raise HTTPException(400, '请选择有效供应商')
+
+    po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S%f')}{supplier.supplier_code}"
+    while db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first():
+        po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S%f')}{supplier.supplier_code}"
+
+    po = PurchaseOrder(
+        po_no=po_no,
+        supplier_id=supplier_id,
+        payment_status=str(payload.get('payment_status') or 'unpaid'),
+        status='created_unchecked',
+        purchased_at=datetime.now(),
+    )
+    db.add(po)
+    db.flush()
+
     qty = int(payload.get('qty') or 0)
     unit_cost = float(payload.get('unit_cost') or 0)
     line_total = qty * unit_cost
@@ -266,9 +273,9 @@ def add_purchase_order_line(payload: dict, db: Session = Depends(get_db), _=Depe
         unit_cost=unit_cost,
         line_total=line_total,
     ))
-    po.total_cost = float(po.total_cost or 0) + line_total
+    po.total_cost = line_total
     db.commit()
-    return {'ok': True}
+    return {'ok': True, 'po_no': po_no}
 
 
 @router.delete('/purchase-orders/{po_id}')

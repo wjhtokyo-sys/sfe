@@ -221,36 +221,52 @@ function SupplierPanel({ authHeaders }) {
 }
 
 function PurchaseOrderPanel({ authHeaders }) {
-  const [rows, setRows] = useState([]); const [suppliers, setSuppliers] = useState([]); const [poPick, setPoPick] = useState();
+  const [rows, setRows] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [importSupplierId, setImportSupplierId] = useState();
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRows, setDetailRows] = useState([]);
-  const [line, setLine] = useState({ po_no: '', supplier_id: undefined, jan: '', item_name: '', qty: undefined, unit_cost: undefined, payment_status: 'unpaid', purchased_at: '' });
+  const [line, setLine] = useState({ supplier_id: undefined, jan: '', item_name: '', qty: undefined, unit_cost: undefined, payment_status: 'unpaid' });
+
   const load = async () => {
     const [po, sp] = await Promise.all([api.get('/api/purchase-orders', authHeaders).then(r => r.data), api.get('/api/suppliers', authHeaders).then(r => r.data)]);
     setRows(po); setSuppliers(sp);
   };
   useEffect(() => { load(); }, []);
+
+  const statusTag = (v) => v === 'checked_inbound' ? <Tag color='green'>已盘点入库</Tag> : <Tag color='red'>已创建未盘点</Tag>;
+  const payTag = (v) => v === 'paid' ? '已支付' : '未支付';
+
   return <Card className='panel' title='进货单管理'>
     <Space wrap>
       <Button className='click-btn' onClick={async () => { const resp = await api.get('/api/purchase-orders/import-template', { ...authHeaders, responseType: 'blob' }); const url = window.URL.createObjectURL(new Blob([resp.data])); const a = document.createElement('a'); a.href = url; a.download = 'purchase_order_template.xlsx'; a.click(); window.URL.revokeObjectURL(url); }}>下载导入模板</Button>
       <Select placeholder='选择供应商（必选）' style={{ width: 220 }} value={importSupplierId} options={suppliers.map(s => ({ label: s.name, value: s.id }))} onChange={setImportSupplierId} />
       <Upload accept='.xlsx' showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { if (!importSupplierId) { message.error('请先选择供应商'); onError(new Error('missing supplier')); return; } const fd = new FormData(); fd.append('supplier_id', importSupplierId); fd.append('file', file); const res = await api.post('/api/purchase-orders/import-excel', fd, { ...authHeaders, headers: { ...authHeaders.headers, 'Content-Type': 'multipart/form-data' } }); message.success(`导入成功：${res.data?.po_no || ''}（${res.data?.rows || 0}行）`); load(); onSuccess('ok'); } catch (e) { message.error(e?.response?.data?.detail || '导入失败'); onError(e); } }}><Button className='click-btn' icon={<UploadOutlined />} disabled={!importSupplierId}>批量导入</Button></Upload>
-      <Select placeholder='进货单号' style={{ width: 220 }} value={poPick} options={rows.map(r => ({ label: r.po_no, value: r.id }))} onChange={setPoPick} />
-      <Button className='click-btn' onClick={async () => { if (!poPick) return; await api.post(`/api/purchase-orders/${poPick}/status`, { status: 'checked_inbound' }, authHeaders); message.success('状态已更新'); load(); }}>修改进货状态</Button>
     </Space>
+
     <Space wrap style={{ marginTop: 8 }}>
-      <Input placeholder='进货单号' value={line.po_no} onChange={(e) => setLine({ ...line, po_no: e.target.value })} />
-      <Select placeholder='供应商ID' style={{ width: 140 }} value={line.supplier_id} options={suppliers.map(s => ({ label: `${s.id}-${s.name}`, value: s.id }))} onChange={(v) => setLine({ ...line, supplier_id: v })} />
+      <Select placeholder='供应商名' style={{ width: 180 }} value={line.supplier_id} options={suppliers.map(s => ({ label: s.name, value: s.id }))} onChange={(v) => setLine({ ...line, supplier_id: v })} />
       <Input placeholder='JAN' value={line.jan} onChange={(e) => setLine({ ...line, jan: e.target.value })} />
       <Input placeholder='品名' value={line.item_name} onChange={(e) => setLine({ ...line, item_name: e.target.value })} />
       <InputNumber placeholder='数量' min={1} value={line.qty} onChange={(v) => setLine({ ...line, qty: v ?? undefined })} />
       <InputNumber placeholder='进货单价' min={0} value={line.unit_cost} onChange={(v) => setLine({ ...line, unit_cost: v ?? undefined })} />
-      <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/purchase-orders/lines', line, authHeaders); message.success('添加成功'); load(); }}>添加进货单</Button>
+      <Button className='click-btn' type='primary' onClick={async () => { const res = await api.post('/api/purchase-orders/lines', line, authHeaders); message.success(`手动添加成功：${res.data?.po_no || ''}`); setLine({ supplier_id: undefined, jan: '', item_name: '', qty: undefined, unit_cost: undefined, payment_status: 'unpaid' }); load(); }}>手动添加进货单</Button>
     </Space>
+
     <Table style={{ marginTop: 8 }} rowKey='id' dataSource={rows} columns={[
-      { title: '进货单号', dataIndex: 'po_no' }, { title: '进货时间', dataIndex: 'purchased_at' }, { title: '供应商ID', dataIndex: 'supplier_id' }, { title: '进货单合计进货价格', dataIndex: 'total_cost' },
-      { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={async () => { const res = await api.get(`/api/purchase-orders/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>商品详细</Button><Popconfirm title='确认删除进货单？' onConfirm={async () => { await api.delete(`/api/purchase-orders/${r.id}`, authHeaders); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
+      { title: '进货单号', dataIndex: 'po_no' },
+      { title: '进货时间', dataIndex: 'purchased_at' },
+      { title: '供应商ID', dataIndex: 'supplier_id' },
+      { title: '进货单合计进货价格', dataIndex: 'total_cost' },
+      { title: '进货单付款状态', dataIndex: 'payment_status', render: payTag },
+      { title: '进货单盘点状态', dataIndex: 'status', render: statusTag },
+      {
+        title: '操作', render: (_, r) => <Space>
+          {r.status === 'created_unchecked' && <Button className='click-btn' type='primary' onClick={async () => { await api.post(`/api/purchase-orders/${r.id}/status`, { status: 'checked_inbound' }, authHeaders); message.success('盘点成功'); load(); }}>盘点成功</Button>}
+          <Button className='click-btn' onClick={async () => { const res = await api.get(`/api/purchase-orders/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>商品详细</Button>
+          <Popconfirm title='确认删除进货单？' onConfirm={async () => { await api.delete(`/api/purchase-orders/${r.id}`, authHeaders); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm>
+        </Space>
+      },
     ]} />
     <Modal open={detailOpen} title='商品详细' footer={null} onCancel={() => setDetailOpen(false)} width={720}>
       <Table rowKey='id' pagination={false} dataSource={detailRows} columns={[
