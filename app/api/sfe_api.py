@@ -170,30 +170,62 @@ def import_purchase_order_excel(supplier_id: int = Form(...), file: UploadFile =
     if not supplier:
         raise HTTPException(400, '供应商不存在，请先选择供应商')
 
-    wb = load_workbook(filename=BytesIO(file.file.read()), data_only=True)
-    ws = wb.active
-    rows = [r for r in ws.iter_rows(min_row=2, values_only=True) if r and r[0]]
-    if not rows:
-        raise HTTPException(400, '模板没有可导入数据')
+    try:
+        wb = load_workbook(filename=BytesIO(file.file.read()), data_only=True)
+        ws = wb.active
+        header = [str(c).strip().lower() if c is not None else '' for c in next(ws.iter_rows(min_row=1, max_row=1, values_only=True))]
+        rows = [r for r in ws.iter_rows(min_row=2, values_only=True) if r and r[0]]
+        if not rows:
+            raise HTTPException(400, '模板没有可导入数据')
 
-    po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S')}{supplier.supplier_code}"
-    while db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first():
-        po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S%f')}{supplier.supplier_code}"
+        po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S')}{supplier.supplier_code}"
+        while db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first():
+            po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S%f')}{supplier.supplier_code}"
 
-    purchased_at = rows[0][5]
-    payment_status = str(rows[0][4] or 'unpaid')
-    po = PurchaseOrder(po_no=po_no, supplier_id=supplier_id, payment_status=payment_status, status='created_unchecked', purchased_at=purchased_at)
-    db.add(po)
-    db.flush()
-    total = 0.0
-    for r in rows:
-        jan, item_name, qty, unit_cost = str(r[0]).strip(), str(r[1]).strip(), int(float(r[2] or 0)), float(r[3] or 0)
-        line_total = qty * unit_cost
-        total += line_total
-        db.add(PurchaseOrderLine(purchase_order_id=po.id, jan=jan, item_name_snapshot=item_name, qty=qty, unit_cost=unit_cost, line_total=line_total))
-    po.total_cost = total
-    db.commit()
-    return {'ok': True, 'po_no': po_no}
+        # 支持两种模板：
+        # A) purchase模板: jan,item_name,qty,unit_cost,payment_status,purchased_at
+        # B) item模板兼容: jan,brand,name,spec,msrp_price,in_qty,is_active
+        if header[:6] == ['jan', 'item_name', 'qty', 'unit_cost', 'payment_status', 'purchased_at']:
+            payment_status = str(rows[0][4] or 'unpaid')
+            purchased_at = rows[0][5] if isinstance(rows[0][5], datetime) else datetime.now()
+            parsed = [
+                {
+                    'jan': str(r[0]).strip(),
+                    'item_name': str(r[1]).strip(),
+                    'qty': int(float(r[2] or 0)),
+                    'unit_cost': float(r[3] or 0),
+                }
+                for r in rows
+            ]
+        else:
+            payment_status = 'unpaid'
+            purchased_at = datetime.now()
+            parsed = [
+                {
+                    'jan': str(r[0]).strip(),
+                    'item_name': str((r[2] if len(r) > 2 else '') or r[0]).strip(),
+                    'qty': int(float((r[5] if len(r) > 5 else 0) or 0)),
+                    'unit_cost': float((r[4] if len(r) > 4 else 0) or 0),
+                }
+                for r in rows
+            ]
+
+        po = PurchaseOrder(po_no=po_no, supplier_id=supplier_id, payment_status=payment_status, status='created_unchecked', purchased_at=purchased_at)
+        db.add(po)
+        db.flush()
+        total = 0.0
+        for p in parsed:
+            line_total = p['qty'] * p['unit_cost']
+            total += line_total
+            db.add(PurchaseOrderLine(purchase_order_id=po.id, jan=p['jan'], item_name_snapshot=p['item_name'], qty=p['qty'], unit_cost=p['unit_cost'], line_total=line_total))
+        po.total_cost = total
+        db.commit()
+        return {'ok': True, 'po_no': po_no, 'rows': len(parsed)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(400, f'导入失败：{e}')
 
 
 @router.get('/purchase-orders')
