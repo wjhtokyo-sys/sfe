@@ -1,73 +1,73 @@
-import React, { useEffect } from 'react';
-import { Button, Card, Col, Form, Input, InputNumber, Row, Space, Table, Tag, Typography } from 'antd';
-import { useDispatch, useSelector } from 'react-redux';
-import { loadDashboard } from './features/sfeSlice';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Button, Card, Form, Input, Layout, Menu, Table, Typography, message } from 'antd';
 import { api } from './api/client';
 
+const { Sider, Content } = Layout;
 const { Title } = Typography;
 
 export default function App() {
-  const dispatch = useDispatch();
-  const data = useSelector((s) => s.sfe);
+  const [mode, setMode] = useState('home');
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [role, setRole] = useState(localStorage.getItem('role') || '');
+  const [menu, setMenu] = useState('items');
+  const [data, setData] = useState({ items: [], orders: [], bills: [], customers: [], lots: [], allocations: [] });
 
-  useEffect(() => { dispatch(loadDashboard()); }, [dispatch]);
+  const authHeaders = useMemo(() => ({ headers: { Authorization: `Bearer ${token}` } }), [token]);
 
-  const refresh = () => dispatch(loadDashboard());
+  const login = async (url, values) => {
+    try {
+      const res = await api.post(url, values);
+      setToken(res.data.token); setRole(res.data.role); setMode('panel');
+      localStorage.setItem('token', res.data.token); localStorage.setItem('role', res.data.role);
+      message.success('登录成功');
+    } catch { message.error('登录失败'); }
+  };
 
-  const quick = async (path, payload) => { await api.post(path, payload); refresh(); };
+  const load = async () => {
+    if (!token) return;
+    try {
+      const req = (u) => api.get(u, authHeaders).then(r => r.data).catch(() => []);
+      const [items, orders, bills, customers, lots, allocations] = await Promise.all([
+        req('/items'), req('/orders'), req('/bills'), req('/customers'), req('/lots'), req('/allocations')
+      ]);
+      setData({ items, orders, bills, customers, lots, allocations });
+    } catch {}
+  };
 
-  return (
-    <div style={{ padding: 16 }}>
-      <Title level={3}>SFE 业务闭环看板</Title>
-      <Space wrap>
-        <Card title='创建客户'>
-          <Form onFinish={(v) => quick('/customers', v)} layout='inline'>
-            <Form.Item name='name' rules={[{ required: true }]}><Input placeholder='客户名' /></Form.Item>
-            <Button htmlType='submit' type='primary'>新增</Button>
-          </Form>
-        </Card>
-        <Card title='创建商品'>
-          <Form onFinish={(v) => quick('/items', v)} layout='inline'>
-            <Form.Item name='jan' rules={[{ required: true }]}><Input placeholder='JAN' /></Form.Item>
-            <Form.Item name='brand' rules={[{ required: true }]}><Input placeholder='品牌' /></Form.Item>
-            <Form.Item name='name' rules={[{ required: true }]}><Input placeholder='商品名' /></Form.Item>
-            <Button htmlType='submit' type='primary'>新增</Button>
-          </Form>
-        </Card>
-      </Space>
+  useEffect(() => { if (token) { setMode('panel'); load(); } }, [token]);
 
-      <Row gutter={12} style={{ marginTop: 16 }}>
-        <Col span={12}><SimpleTable title='订单' data={data.orders} cols={['id','customer_id','item_name_snapshot','qty_requested','qty_allocated','status']} /></Col>
-        <Col span={12}><SimpleTable title='库存批次' data={data.lots} cols={['id','item_id','qty_received','qty_remaining','fifo_rank']} /></Col>
-      </Row>
+  const logout = () => { setToken(''); setRole(''); setMode('home'); localStorage.clear(); };
 
-      <Row gutter={12} style={{ marginTop: 16 }}>
-        <Col span={8}><ActionCard title='创建订单' onFinish={(v)=>quick('/orders', v)} fields={[['customer_id'],['item_id'],['qty_requested']]} /></Col>
-        <Col span={8}><ActionCard title='到货入库' onFinish={(v)=>quick('/lots', v)} fields={[['item_id'],['qty_received']]} /></Col>
-        <Col span={8}><ActionCard title='FIFO分配' onFinish={(v)=>quick('/allocations/fifo', v)} fields={[['order_line_id']]} /></Col>
-      </Row>
+  if (mode === 'home') {
+    return <div className='page'>
+      <Title level={3}>SFE 登录入口</Title>
+      <div className='login-wrap'><Card title='客户登录入口页'>
+        <Form onFinish={(v)=>login('/auth/customer-login', v)}><Form.Item name='username' rules={[{required:true}]}><Input placeholder='客户账号' /></Form.Item><Form.Item name='password' rules={[{required:true}]}><Input.Password placeholder='密码' /></Form.Item><Button className='click-btn' type='primary' htmlType='submit'>客户登录</Button></Form>
+      </Card></div>
+      <div className='login-wrap'><Card title='管理员登录入口页'>
+        <Form onFinish={(v)=>login('/auth/admin-login', v)}><Form.Item name='username' rules={[{required:true}]}><Input placeholder='管理员账号' /></Form.Item><Form.Item name='password' rules={[{required:true}]}><Input.Password placeholder='密码' /></Form.Item><Button className='click-btn' type='primary' htmlType='submit'>管理员登录</Button></Form>
+      </Card></div>
+    </div>;
+  }
 
-      <Row gutter={12} style={{ marginTop: 16 }}>
-        <Col span={12}><ActionCard title='生成账单' onFinish={(v)=>quick('/bills', {...v, allocation_ids: String(v.allocation_ids).split(',').map(Number)})} fields={[['customer_id'],['allocation_ids','逗号分隔 allocation id'],['sale_unit_price']]} /></Col>
-        <Col span={12}><ActionCard title='账单状态推进' onFinish={(v)=>quick(`/bills/${v.bill_id}/state`, {action:v.action})} fields={[['bill_id'],['action','pay/confirm_receipt/ship/deliver/archive']]} /></Col>
-      </Row>
+  const customerMenus = [
+    { key: 'items', label: '商品信息查询' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }
+  ];
+  const adminMenus = [
+    { key: 'customers', label: '客户管理' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单管理' }
+  ];
 
-      <Row gutter={12} style={{ marginTop: 16 }}>
-        <Col span={12}><SimpleTable title='分配记录' data={data.allocations} cols={['id','order_line_id','lot_id','qty_allocated','status']} /></Col>
-        <Col span={12}><SimpleTable title='账单' data={data.bills} cols={['id','bill_no','status','payment_status','shipping_status','total_amount']} /></Col>
-      </Row>
-    </div>
-  );
-}
+  const showTable = (title, arr) => <Card className='panel' title={title}><Table size='small' rowKey='id' dataSource={arr} columns={Object.keys(arr[0]||{id:1}).map(k=>({title:k,dataIndex:k,key:k}))} /></Card>;
 
-function ActionCard({ title, onFinish, fields }) {
-  return <Card title={title}><Form onFinish={onFinish} layout='vertical'>{fields.map(([name, p]) => (
-    <Form.Item key={name} name={name} label={name} rules={[{ required: true }]}>
-      {name.includes('action') || name.includes('allocation_ids') ? <Input placeholder={p || ''} /> : <InputNumber style={{ width: '100%' }} placeholder={p || ''} />}
-    </Form.Item>))}<Button htmlType='submit' type='primary'>执行</Button></Form></Card>;
-}
-
-function SimpleTable({ title, data, cols }) {
-  const columns = cols.map((k)=>({title:k,dataIndex:k,key:k,render:(v)=>k==='status'?<Tag>{v}</Tag>:v}));
-  return <Card title={title}><Table rowKey='id' columns={columns} dataSource={data} size='small' pagination={{ pageSize: 5 }} /></Card>;
+  return <Layout style={{ minHeight: '100vh' }}>
+    <Sider><div style={{color:'#fff',padding:16}}>{role==='customer'?'客户管理页':'管理员管理页'}</div><Menu theme='dark' mode='inline' selectedKeys={[menu]} items={role==='customer'?customerMenus:adminMenus} onClick={(e)=>setMenu(e.key)} /></Sider>
+    <Layout><Content className='page'><Button className='click-btn' onClick={logout}>退出登录</Button>
+      {menu==='items' && showTable('商品信息查询', data.items)}
+      {menu==='orders' && showTable('订单管理', data.orders)}
+      {menu==='bills' && showTable('账单管理', data.bills)}
+      {menu==='history' && showTable('历史账单', data.bills.filter(b=>b.status==='archived'))}
+      {menu==='customers' && showTable('客户管理', data.customers)}
+      {menu==='fifo' && <>{showTable('FIFO库存批次', data.lots)}{showTable('FIFO分配记录', data.allocations)}</>}
+    </Content></Layout>
+  </Layout>;
 }

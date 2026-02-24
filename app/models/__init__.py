@@ -1,11 +1,13 @@
 from app.models.entities import (
     Allocation,
+    AuthToken,
     Bill,
     BillLine,
     Customer,
     CustomerOrder,
     InventoryLot,
     Item,
+    User,
 )
 
 __all__ = [
@@ -16,4 +18,6 @@ __all__ = [
     "Allocation",
     "Bill",
     "BillLine",
+    "User",
+    "AuthToken",
 ]

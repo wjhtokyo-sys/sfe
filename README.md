@@ -24,3 +24,4 @@ npm run dev
 - Database ER Diagram: [`docs/DATABASE_ER.md`](docs/DATABASE_ER.md)
 - Business & Data Spec (Final): [`docs/BUSINESS_DATA_SPEC.md`](docs/BUSINESS_DATA_SPEC.md)
 - 操作轨迹报告（简版）: [`docs/OPERATION_TRACE.md`](docs/OPERATION_TRACE.md)
+- 操作手册（非IT）: [`docs/OPERATION_MANUAL.md`](docs/OPERATION_MANUAL.md)

@@ -102,3 +102,21 @@ class BillLine(Base, TimestampMixin):
     qty: Mapped[int] = mapped_column(Integer)
     sale_unit_price: Mapped[float] = mapped_column(Float)
     line_amount: Mapped[float] = mapped_column(Float)
+
+
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    password: Mapped[str] = mapped_column(String(128))
+    role: Mapped[str] = mapped_column(String(32), index=True)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), nullable=True)
+
+
+class AuthToken(Base, TimestampMixin):
+    __tablename__ = "auth_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    token: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)

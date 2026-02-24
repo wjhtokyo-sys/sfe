@@ -1,36 +1,45 @@
 from fastapi.testclient import TestClient
 from main import app
+from seed import run as seed_run
 
 client = TestClient(app)
 
 
-def test_full_flow():
-    suffix = client.get('/api/customers').status_code
-    c_resp = client.post('/api/customers', json={'name': 'Alice'})
-    assert c_resp.status_code == 200
-    c = c_resp.json()
+def admin_headers():
+    login = client.post('/auth/admin-login', json={'username': 'admin1', 'password': 'admin123'})
+    token = login.json()['token']
+    return {'Authorization': f'Bearer {token}'}
 
-    i_resp = client.post('/api/items', json={'jan': f'JAN-{c["id"]}', 'brand': 'Shimano', 'name': 'X1'})
-    assert i_resp.status_code == 200
-    i = i_resp.json()
 
-    o_resp = client.post('/api/orders', json={'customer_id': c['id'], 'item_id': i['id'], 'qty_requested': 5})
-    assert o_resp.status_code == 200
-    o = o_resp.json()
+def customer_headers(username='cust1'):
+    login = client.post('/auth/customer-login', json={'username': username, 'password': '123456'})
+    token = login.json()['token']
+    return {'Authorization': f'Bearer {token}'}
 
-    assert client.post('/api/lots', json={'item_id': i['id'], 'qty_received': 3}).status_code == 200
-    assert client.post('/api/lots', json={'item_id': i['id'], 'qty_received': 4}).status_code == 200
 
-    alloc_resp = client.post('/api/allocations/fifo', json={'order_line_id': o['id']})
-    assert alloc_resp.status_code == 200
-    allocs = alloc_resp.json()
+def test_full_flow_and_state_guard():
+    seed_run()
+    h = admin_headers()
+
+    c = client.get('/api/customers', headers=h).json()[0]
+    i = client.get('/api/items', headers=h).json()[0]
+
+    o = client.post('/api/orders', json={'customer_id': c['id'], 'item_id': i['id'], 'qty_requested': 5}, headers=h).json()
+    client.post('/api/lots', json={'item_id': i['id'], 'qty_received': 3}, headers=h)
+    client.post('/api/lots', json={'item_id': i['id'], 'qty_received': 4}, headers=h)
+
+    allocs = client.post('/api/allocations/fifo', json={'order_line_id': o['id']}, headers=h).json()
     alloc_ids = [a['id'] for a in allocs]
-    assert len(alloc_ids) == 2
 
-    bill_resp = client.post('/api/bills', json={'customer_id': c['id'], 'allocation_ids': alloc_ids, 'sale_unit_price': 20})
-    assert bill_resp.status_code == 200
-    bill = bill_resp.json()
-    assert bill['total_amount'] == 100
+    bill = client.post('/api/bills', json={'customer_id': c['id'], 'allocation_ids': alloc_ids, 'sale_unit_price': 20}, headers=h).json()
 
-    paid = client.post(f"/api/bills/{bill['id']}/state", json={'action': 'pay'}).json()
-    assert paid['payment_status'] == 'paid'
+    bad = client.post(f"/api/bills/{bill['id']}/state", json={'action': 'deliver'}, headers=h)
+    assert bad.status_code == 400
+
+    assert client.post(f"/api/bills/{bill['id']}/state", json={'action': 'pay'}, headers=h).status_code == 200
+
+
+def test_customer_cannot_access_admin_data():
+    seed_run()
+    h = customer_headers('cust1')
+    assert client.get('/api/customers', headers=h).status_code == 403

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import Base, engine
 from app.models import entities  # noqa: F401
 from app.api.sfe_api import router as sfe_router
+from app.api.auth_api import router as auth_router
 
 app = FastAPI(title="SFE API")
 
@@ -16,6 +17,7 @@ app.add_middleware(
 )
 
 Base.metadata.create_all(bind=engine)
+app.include_router(auth_router)
 app.include_router(sfe_router)
 
 
