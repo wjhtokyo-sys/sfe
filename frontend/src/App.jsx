@@ -17,6 +17,7 @@ export default function App() {
   const [fifoLot, setFifoLot] = useState({ item_id: undefined, qty_received: 1 });
   const [fifoOrderId, setFifoOrderId] = useState();
   const [orderCustomerFilter, setOrderCustomerFilter] = useState();
+  const [refreshing, setRefreshing] = useState(false);
 
   const authHeaders = useMemo(() => ({ headers: { Authorization: `Bearer ${token}` } }), [token]);
 
@@ -34,19 +35,24 @@ export default function App() {
 
   const load = async () => {
     if (!token) return;
-    const ts = Date.now();
-    const noCacheHeaders = { ...authHeaders, headers: { ...authHeaders.headers, 'Cache-Control': 'no-cache', Pragma: 'no-cache' } };
-    const meInfo = await api.get(`/auth/me?_ts=${ts}`, noCacheHeaders).then(r => r.data);
-    setMe(meInfo);
-    const req = (u) => {
-      const sep = u.includes('?') ? '&' : '?';
-      return api.get(`${u}${sep}_ts=${ts}`, noCacheHeaders).then(r => r.data).catch(() => []);
-    };
-    const [items, orders, bills, customers, lots, allocations, superCustomers] = await Promise.all([
-      req(`/api/items${kw ? `?keyword=${encodeURIComponent(kw)}` : ''}`),
-      req('/api/orders'), req('/api/bills'), req('/api/customers'), req('/api/lots'), req('/api/allocations'), req('/api/super/customers'),
-    ]);
-    setData({ items, orders, bills, customers, lots, allocations, superCustomers });
+    setRefreshing(true);
+    try {
+      const ts = Date.now();
+      const noCacheHeaders = { ...authHeaders, headers: { ...authHeaders.headers, 'Cache-Control': 'no-cache', Pragma: 'no-cache' } };
+      const meInfo = await api.get(`/auth/me?_ts=${ts}`, noCacheHeaders).then(r => r.data);
+      setMe(meInfo);
+      const req = (u) => {
+        const sep = u.includes('?') ? '&' : '?';
+        return api.get(`${u}${sep}_ts=${ts}`, noCacheHeaders).then(r => r.data).catch(() => []);
+      };
+      const [items, orders, bills, customers, lots, allocations, superCustomers] = await Promise.all([
+        req(`/api/items${kw ? `?keyword=${encodeURIComponent(kw)}` : ''}`),
+        req('/api/orders'), req('/api/bills'), req('/api/customers'), req('/api/lots'), req('/api/allocations'), req('/api/super/customers'),
+      ]);
+      setData({ items, orders, bills, customers, lots, allocations, superCustomers });
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   useEffect(() => { if (token) load(); }, [token]);
@@ -79,7 +85,7 @@ export default function App() {
     <Sider><div style={{ color: '#fff', padding: 16 }}>{role === 'customer' ? '客户管理页' : '超级管理员管理页'}</div><Menu theme='dark' mode='inline' selectedKeys={[menu]} items={role === 'customer' ? customerMenus : adminMenus} onClick={(e) => setMenu(e.key)} /></Sider>
     <Layout><Content className='page'>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <Space><Button className='click-btn' onClick={load}>刷新</Button></Space>
+        <Space><Button className='click-btn' loading={refreshing} onClick={load}>{refreshing ? '刷新中...' : '刷新'}</Button></Space>
         <Button className='click-btn' danger onClick={logout}>登出</Button>
       </div>
 
