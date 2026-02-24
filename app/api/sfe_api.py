@@ -234,6 +234,16 @@ def list_orders(db: Session = Depends(get_db), user=Depends(get_current_user)):
     return q.order_by(CustomerOrder.id.desc()).all()
 
 
+@router.delete('/orders/{order_id}')
+def delete_order(order_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    order = db.get(CustomerOrder, order_id)
+    if not order:
+        raise HTTPException(404, '订单不存在')
+    db.delete(order)
+    db.commit()
+    return {'ok': True}
+
+
 @router.post('/bills/from-orders')
 def build_bill_from_orders(payload: dict, db: Session = Depends(get_db), user=Depends(require_roles('super_admin'))):
     return sfe_service.build_bill_from_orders(db, payload.get('order_ids', []), user.role, float(payload.get('sale_unit_price', 1)))
