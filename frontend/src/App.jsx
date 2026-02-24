@@ -236,6 +236,7 @@ function PurchaseOrderPanel({ authHeaders }) {
 
   const statusTag = (v) => v === 'checked_inbound' ? <Tag color='green'>已盘点入库</Tag> : <Tag color='red'>已创建未盘点</Tag>;
   const payTag = (v) => v === 'paid' ? <Tag color='green'>已支付</Tag> : <Tag color='red'>未支付</Tag>;
+  const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
 
   return <Card className='panel' title='进货单管理'>
     <Space wrap>
@@ -255,16 +256,16 @@ function PurchaseOrderPanel({ authHeaders }) {
 
     <Table style={{ marginTop: 8 }} rowKey='id' dataSource={rows} columns={[
       { title: '进货单号', dataIndex: 'po_no' },
-      { title: '进货时间', dataIndex: 'purchased_at' },
-      { title: '供应商ID', dataIndex: 'supplier_id' },
-      { title: '进货单合计进货价格', dataIndex: 'total_cost' },
-      { title: '进货单付款状态', dataIndex: 'payment_status', render: payTag },
-      { title: '进货单盘点状态', dataIndex: 'status', render: statusTag },
+      { title: '进货时间', dataIndex: 'purchased_at', render: fmtDate },
+      { title: '供应商名', dataIndex: 'supplier_id', render: (v) => suppliers.find(s => s.id === v)?.name || `供应商${v}` },
+      { title: '合计进货价格', dataIndex: 'total_cost' },
+      { title: '付款状态', dataIndex: 'payment_status', render: payTag },
+      { title: '盘点状态', dataIndex: 'status', render: statusTag },
       {
         title: '操作', render: (_, r) => <Space>
-          {r.status === 'created_unchecked' && <Button className='click-btn' type='primary' onClick={async () => { await api.post(`/api/purchase-orders/${r.id}/status`, { status: 'checked_inbound' }, authHeaders); message.success('盘点成功'); load(); }}>盘点成功</Button>}
-          <Button className='click-btn' onClick={async () => { const res = await api.get(`/api/purchase-orders/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>商品详细</Button>
-          {r.payment_status !== 'paid' && <Popconfirm title='确认删除进货单？' onConfirm={async () => { await api.delete(`/api/purchase-orders/${r.id}`, authHeaders); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm>}
+          <Button className='click-btn' onClick={async () => { const res = await api.get(`/api/purchase-orders/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>到货详细</Button>
+          {r.payment_status !== 'paid' && <Popconfirm title='确认已支付？' onConfirm={async () => { await api.post(`/api/purchase-orders/${r.id}/pay`, {}, authHeaders); message.success('已更新为已支付'); load(); }}><Button className='click-btn' type='primary'>支付完成</Button></Popconfirm>}
+          {r.status === 'created_unchecked' && <Popconfirm title='确认盘点完成？' onConfirm={async () => { await api.post(`/api/purchase-orders/${r.id}/status`, { status: 'checked_inbound' }, authHeaders); message.success('盘点完成'); load(); }}><Button className='click-btn'>盘点完成</Button></Popconfirm>}
         </Space>
       },
     ]} />

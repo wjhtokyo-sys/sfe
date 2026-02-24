@@ -321,6 +321,16 @@ def update_purchase_order_status(po_id: int, payload: dict, db: Session = Depend
     return {'ok': True}
 
 
+@router.post('/purchase-orders/{po_id}/pay')
+def mark_purchase_order_paid(po_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    po = db.get(PurchaseOrder, po_id)
+    if not po:
+        raise HTTPException(404, '进货单不存在')
+    po.payment_status = 'paid'
+    db.commit()
+    return {'ok': True}
+
+
 @router.get('/fifo/pending')
 def list_fifo_pending(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     return db.query(FifoPendingTask).order_by(FifoPendingTask.id.desc()).all()
