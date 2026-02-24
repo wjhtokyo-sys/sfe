@@ -176,9 +176,9 @@ def import_purchase_order_excel(supplier_id: int, file: UploadFile = File(...), 
     if not rows:
         raise HTTPException(400, '模板没有可导入数据')
 
-    po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S')}{supplier.supplier_code}"
     while db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first():
-        po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        po_no = f"PO{datetime.now().strftime('%Y%m%d%H%M%S%f')}{supplier.supplier_code}"
 
     purchased_at = rows[0][5]
     payment_status = str(rows[0][4] or 'unpaid')
