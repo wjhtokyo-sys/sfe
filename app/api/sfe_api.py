@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_roles
 from app.core.database import get_db
-from app.models.entities import Allocation, Bill, BillLine, Customer, CustomerOrder, InventoryLot, Item, User
+from app.models.entities import Allocation, Bill, BillLine, Customer, CustomerOrder, FifoPendingTask, InventoryLot, Item, PurchaseOrder, PurchaseOrderLine, Supplier, User
 from app.schemas.sfe import AllocateIn, BuildBillIn, CustomerIn, ItemIn, LotIn, OrderIn, StateActionIn
 from app.services import sfe_service
 
@@ -97,6 +97,214 @@ def super_delete_customer_user(user_id: int, db: Session = Depends(get_db), _=De
     db.delete(u)
     if c:
         db.delete(c)
+    db.commit()
+    return {'ok': True}
+
+
+@router.get('/suppliers')
+def list_suppliers(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    return db.query(Supplier).order_by(Supplier.id.desc()).all()
+
+
+@router.post('/suppliers')
+def create_supplier(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    code = str(payload.get('supplier_code', '')).strip()
+    name = str(payload.get('name', '')).strip()
+    if not code or not name:
+        raise HTTPException(400, '请填写供应商编码和供应商名')
+    if db.query(Supplier).filter(Supplier.supplier_code == code).first():
+        raise HTTPException(400, '供应商编码已存在')
+    obj = Supplier(supplier_code=code, name=name, is_active=True)
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+
+@router.patch('/suppliers/{supplier_id}')
+def update_supplier(supplier_id: int, payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    obj = db.get(Supplier, supplier_id)
+    if not obj:
+        raise HTTPException(404, '供应商不存在')
+    if payload.get('supplier_code'):
+        code = str(payload.get('supplier_code')).strip()
+        exists = db.query(Supplier).filter(Supplier.supplier_code == code, Supplier.id != supplier_id).first()
+        if exists:
+            raise HTTPException(400, '供应商编码已存在')
+        obj.supplier_code = code
+    if payload.get('name'):
+        obj.name = str(payload.get('name')).strip()
+    if 'is_active' in payload:
+        obj.is_active = bool(payload.get('is_active'))
+    db.commit()
+    return {'ok': True}
+
+
+@router.delete('/suppliers/{supplier_id}')
+def delete_supplier(supplier_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    obj = db.get(Supplier, supplier_id)
+    if not obj:
+        raise HTTPException(404, '供应商不存在')
+    db.delete(obj)
+    db.commit()
+    return {'ok': True}
+
+
+@router.get('/purchase-orders/import-template')
+def purchase_order_import_template(_=Depends(require_roles('super_admin'))):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'purchase_order'
+    ws.append(['po_no', 'supplier_id', 'jan', 'item_name', 'qty', 'unit_cost', 'payment_status', 'purchased_at'])
+    ws.append(['PO20260225001', 1, 'JAN00001', '示例货品', 10, 120, 'unpaid', '2026-02-25'])
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return StreamingResponse(bio, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers={'Content-Disposition': 'attachment; filename=purchase_order_template.xlsx'})
+
+
+@router.post('/purchase-orders/import-excel')
+def import_purchase_order_excel(file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    wb = load_workbook(filename=BytesIO(file.file.read()), data_only=True)
+    ws = wb.active
+    rows = [r for r in ws.iter_rows(min_row=2, values_only=True) if r and r[0]]
+    if not rows:
+        raise HTTPException(400, '模板没有可导入数据')
+    po_nos = {str(r[0]).strip() for r in rows if r[0]}
+    if len(po_nos) != 1:
+        raise HTTPException(400, '一个文件只能包含一个进货单号')
+
+    po_no = po_nos.pop()
+    supplier_id = int(rows[0][1])
+    purchased_at = rows[0][7]
+    payment_status = str(rows[0][6] or 'unpaid')
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first()
+    if po:
+        raise HTTPException(400, '进货单号已存在')
+    po = PurchaseOrder(po_no=po_no, supplier_id=supplier_id, payment_status=payment_status, status='created_unchecked', purchased_at=purchased_at)
+    db.add(po)
+    db.flush()
+    total = 0.0
+    for r in rows:
+        jan, item_name, qty, unit_cost = str(r[2]).strip(), str(r[3]).strip(), int(float(r[4] or 0)), float(r[5] or 0)
+        line_total = qty * unit_cost
+        total += line_total
+        db.add(PurchaseOrderLine(purchase_order_id=po.id, jan=jan, item_name_snapshot=item_name, qty=qty, unit_cost=unit_cost, line_total=line_total))
+    po.total_cost = total
+    db.commit()
+    return {'ok': True, 'po_no': po_no}
+
+
+@router.get('/purchase-orders')
+def list_purchase_orders(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    return db.query(PurchaseOrder).order_by(PurchaseOrder.id.desc()).all()
+
+
+@router.post('/purchase-orders/lines')
+def add_purchase_order_line(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    po_no = str(payload.get('po_no', '')).strip()
+    po = db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first()
+    if not po:
+        po = PurchaseOrder(
+            po_no=po_no,
+            supplier_id=int(payload.get('supplier_id')),
+            payment_status=str(payload.get('payment_status') or 'unpaid'),
+            status='created_unchecked',
+            purchased_at=payload.get('purchased_at'),
+        )
+        db.add(po)
+        db.flush()
+    qty = int(payload.get('qty') or 0)
+    unit_cost = float(payload.get('unit_cost') or 0)
+    line_total = qty * unit_cost
+    db.add(PurchaseOrderLine(
+        purchase_order_id=po.id,
+        jan=str(payload.get('jan')).strip(),
+        item_name_snapshot=str(payload.get('item_name')).strip(),
+        qty=qty,
+        unit_cost=unit_cost,
+        line_total=line_total,
+    ))
+    po.total_cost = float(po.total_cost or 0) + line_total
+    db.commit()
+    return {'ok': True}
+
+
+@router.delete('/purchase-orders/{po_id}')
+def delete_purchase_order(po_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    po = db.get(PurchaseOrder, po_id)
+    if not po:
+        raise HTTPException(404, '进货单不存在')
+    lines = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
+    for ln in lines:
+        db.delete(ln)
+    db.delete(po)
+    db.commit()
+    return {'ok': True}
+
+
+@router.post('/purchase-orders/{po_id}/status')
+def update_purchase_order_status(po_id: int, payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    po = db.get(PurchaseOrder, po_id)
+    if not po:
+        raise HTTPException(404, '进货单不存在')
+    new_status = str(payload.get('status', '')).strip()
+    if new_status not in {'created_unchecked', 'checked_inbound'}:
+        raise HTTPException(400, '状态不支持')
+    if po.status == 'checked_inbound':
+        raise HTTPException(400, '进货单已盘点入库，不能回退')
+    if new_status == 'checked_inbound':
+        lines = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
+        for ln in lines:
+            matches = db.query(CustomerOrder).filter(CustomerOrder.jan_snapshot == ln.jan, CustomerOrder.status == 'open').all()
+            customer_ids = sorted({m.customer_id for m in matches})
+            if len(customer_ids) >= 2:
+                db.add(FifoPendingTask(purchase_order_line_id=ln.id, source_po_no=po.po_no, jan=ln.jan, item_name=ln.item_name_snapshot, qty=ln.qty, reason_code='multi_customer_match', reason_text='JAN命中多个客户未完成订单，需人工处理', status='pending'))
+                continue
+            if len(customer_ids) == 0:
+                db.add(FifoPendingTask(purchase_order_line_id=ln.id, source_po_no=po.po_no, jan=ln.jan, item_name=ln.item_name_snapshot, qty=ln.qty, reason_code='no_order_match', reason_text='未命中客户订单，需人工处理后再入库', status='pending'))
+                continue
+            lot = InventoryLot(item_id=matches[0].item_id, qty_received=ln.qty, qty_remaining=ln.qty, fifo_rank=db.query(InventoryLot).filter(InventoryLot.item_id == matches[0].item_id).count() + 1, location='PO_CHECKED')
+            db.add(lot)
+        po.status = 'checked_inbound'
+    else:
+        po.status = new_status
+    db.commit()
+    return {'ok': True}
+
+
+@router.get('/fifo/pending')
+def list_fifo_pending(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    return db.query(FifoPendingTask).order_by(FifoPendingTask.id.desc()).all()
+
+
+@router.post('/fifo/pending/{task_id}/resolve')
+def resolve_fifo_pending_task(task_id: int, payload: dict, db: Session = Depends(get_db), user=Depends(require_roles('super_admin'))):
+    task = db.get(FifoPendingTask, task_id)
+    if not task:
+        raise HTTPException(404, '挂起任务不存在')
+    if task.status == 'resolved':
+        raise HTTPException(400, '该任务已处理')
+    action = str(payload.get('action', '')).strip()
+    if action not in {'inbound_to_order', 'inbound_stock', 'close_only'}:
+        raise HTTPException(400, '不支持的处理动作')
+
+    if action in {'inbound_to_order', 'inbound_stock'}:
+        line = db.get(PurchaseOrderLine, task.purchase_order_line_id) if task.purchase_order_line_id else None
+        if not line:
+            raise HTTPException(400, '来源进货明细不存在')
+        item = db.query(Item).filter(Item.jan == line.jan).first()
+        if not item:
+            item = Item(jan=line.jan, brand='-', name=line.item_name_snapshot or line.jan, spec=None, msrp_price=0, in_qty=1, is_active=True)
+            db.add(item)
+            db.flush()
+        lot = InventoryLot(item_id=item.id, qty_received=line.qty, qty_remaining=line.qty, fifo_rank=db.query(InventoryLot).filter(InventoryLot.item_id == item.id).count() + 1, location='FIFO_PENDING')
+        db.add(lot)
+
+    task.status = 'resolved'
+    task.resolution_note = action
+    task.resolved_by = 'super_admin'
+    task.resolved_at = __import__('datetime').datetime.utcnow()
     db.commit()
     return {'ok': True}
 
@@ -339,6 +547,6 @@ def update_bill(bill_id: int, payload: dict, db: Session = Depends(get_db), _=De
     return {'ok': True}
 
 
-@router.post('/fifo/pending/{allocation_id}/resolve')
+@router.post('/fifo/pending-legacy/{allocation_id}/resolve')
 def resolve_fifo_pending(allocation_id: int, decision: StateActionIn, _=Depends(require_roles('super_admin'))):
-    return {'allocation_id': allocation_id, 'decision': decision.action, 'status': 'resolved_by_super_admin'}
+    return {'allocation_id': allocation_id, 'decision': decision.action, 'status': 'legacy_resolved'}

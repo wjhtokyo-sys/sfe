@@ -6,6 +6,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -123,3 +124,53 @@ class AuthToken(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     token: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+
+
+class Supplier(Base, TimestampMixin):
+    __tablename__ = "suppliers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    supplier_code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class PurchaseOrder(Base, TimestampMixin):
+    __tablename__ = "purchase_orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    po_no: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    supplier_id: Mapped[int] = mapped_column(ForeignKey("suppliers.id"), index=True)
+    payment_status: Mapped[str] = mapped_column(String(16), default="unpaid")
+    status: Mapped[str] = mapped_column(String(32), default="created_unchecked")
+    total_cost: Mapped[float] = mapped_column(Float, default=0)
+    purchased_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PurchaseOrderLine(Base, TimestampMixin):
+    __tablename__ = "purchase_order_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    purchase_order_id: Mapped[int] = mapped_column(ForeignKey("purchase_orders.id"), index=True)
+    jan: Mapped[str] = mapped_column(String(64), index=True)
+    item_name_snapshot: Mapped[str] = mapped_column(String(255))
+    qty: Mapped[int] = mapped_column(Integer)
+    unit_cost: Mapped[float] = mapped_column(Float)
+    line_total: Mapped[float] = mapped_column(Float)
+
+
+class FifoPendingTask(Base, TimestampMixin):
+    __tablename__ = "fifo_pending_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    purchase_order_line_id: Mapped[int | None] = mapped_column(ForeignKey("purchase_order_lines.id"), nullable=True, index=True)
+    source_po_no: Mapped[str] = mapped_column(String(64), index=True)
+    jan: Mapped[str] = mapped_column(String(64), index=True)
+    item_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    qty: Mapped[int] = mapped_column(Integer, default=0)
+    reason_code: Mapped[str] = mapped_column(String(64))
+    reason_text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    resolution_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

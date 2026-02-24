@@ -111,26 +111,17 @@ export default function App() {
       {menu === 'bills' && <AdminBills role={role} authHeaders={authHeaders} bills={data.bills} customers={data.customers} allocations={data.allocations} reload={load} />}
       {menu === 'history' && <HistoryBillsPanel role={role} bills={data.bills} customers={data.customers} authHeaders={authHeaders} />}
 
-      {role !== 'customer' && menu === 'suppliers' && <Card className='panel' title='供应商管理' />}
+      {role !== 'customer' && menu === 'suppliers' && <SupplierPanel authHeaders={authHeaders} />}
 
       {role !== 'customer' && menu === 'customers' && <SuperCustomerPanel rows={data.superCustomers} authHeaders={authHeaders} reload={load} />}
 
       {role !== 'customer' && menu === 'items_admin' && <ItemAdminPanel items={data.items} kw={kw} setKw={setKw} load={load} authHeaders={authHeaders} />}
 
-      {role !== 'customer' && menu === 'purchase_orders' && <Card className='panel' title='进货单管理' />}
+      {role !== 'customer' && menu === 'purchase_orders' && <PurchaseOrderPanel authHeaders={authHeaders} />}
 
       {role !== 'customer' && menu === 'arrival_unchecked' && <Card className='panel' title='到货未盘点' />}
 
-      {role !== 'customer' && menu === 'fifo' && <Card className='panel' title='FIFO管理'>
-        <Space wrap>
-          <Select placeholder='选择商品' style={{ width: 220 }} options={data.items.map(i => ({ label: `${i.jan}-${i.name}`, value: i.id }))} onChange={(v) => setFifoLot({ ...fifoLot, item_id: v })} />
-          <InputNumber min={1} value={fifoLot.qty_received} onChange={(v) => setFifoLot({ ...fifoLot, qty_received: v || 1 })} />
-          <Button className='click-btn' onClick={async () => { await api.post('/api/lots', fifoLot, authHeaders); message.success('入库成功'); load(); }}>FIFO入库</Button>
-          <Select placeholder='待分配订单' style={{ width: 240 }} options={data.orders.filter(o => o.status === 'open').map(o => ({ label: `订单${o.id}-${o.item_name_snapshot}`, value: o.id }))} onChange={setFifoOrderId} />
-          <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/allocations/fifo', { order_line_id: fifoOrderId, allocated_by: 'super_admin' }, authHeaders); message.success('FIFO划拨成功'); load(); }}>执行FIFO划拨</Button>
-        </Space>
-        <Table style={{ marginTop: 8 }} rowKey='id' dataSource={data.lots.map(l => ({ ...l, item_name: data.items.find(i => i.id === l.item_id)?.name || '' }))} columns={[{ title: '批次ID', dataIndex: 'id' }, { title: '商品名', dataIndex: 'item_name' }, { title: '剩余', dataIndex: 'qty_remaining' }, { title: 'FIFO序', dataIndex: 'fifo_rank' }]} />
-      </Card>}
+      {role !== 'customer' && menu === 'fifo' && <FifoPendingPanel authHeaders={authHeaders} />}
 
     </Content></Layout>
   </Layout>;
@@ -202,6 +193,78 @@ function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
     <Modal open={!!edit} title='修改商品信息' onCancel={() => setEdit(null)} onOk={async () => { await api.patch(`/api/items/${edit.id}`, edit, authHeaders); message.success('修改成功'); setEdit(null); load(); }}>
       {edit && <Space direction='vertical' style={{ width: '100%' }}><Input value={edit.jan} onChange={(e) => setEdit({ ...edit, jan: e.target.value })} /><Input value={edit.brand} onChange={(e) => setEdit({ ...edit, brand: e.target.value })} /><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /><InputNumber value={edit.msrp_price} onChange={(v) => setEdit({ ...edit, msrp_price: v || 0 })} style={{ width: '100%' }} placeholder='零售价' /><InputNumber value={edit.in_qty} onChange={(v) => setEdit({ ...edit, in_qty: v || 1 })} style={{ width: '100%' }} /></Space>}
     </Modal>
+  </Card>;
+}
+
+function SupplierPanel({ authHeaders }) {
+  const [rows, setRows] = useState([]);
+  const [edit, setEdit] = useState(null);
+  const [form, setForm] = useState({ supplier_code: '', name: '' });
+  const load = async () => setRows(await api.get('/api/suppliers', authHeaders).then(r => r.data));
+  useEffect(() => { load(); }, []);
+  return <Card className='panel' title='供应商管理'>
+    <Space style={{ marginBottom: 8 }}>
+      <Input placeholder='供应商编码' value={form.supplier_code} onChange={(e) => setForm({ ...form, supplier_code: e.target.value })} />
+      <Input placeholder='供应商名' value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/suppliers', form, authHeaders); setForm({ supplier_code: '', name: '' }); load(); }}>追加</Button>
+    </Space>
+    <Table rowKey='id' dataSource={rows} columns={[
+      { title: '供应商ID', dataIndex: 'id' },
+      { title: '供应商编码', dataIndex: 'supplier_code' },
+      { title: '供应商名', dataIndex: 'name' },
+      { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => setEdit({ ...r })}>修改</Button><Popconfirm title='确认删除供应商？' onConfirm={async () => { await api.delete(`/api/suppliers/${r.id}`, authHeaders); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
+    ]} />
+    <Modal open={!!edit} title='修改供应商' onCancel={() => setEdit(null)} onOk={async () => { await api.patch(`/api/suppliers/${edit.id}`, { supplier_code: edit.supplier_code, name: edit.name }, authHeaders); setEdit(null); load(); }}>
+      {edit && <Space direction='vertical' style={{ width: '100%' }}><Input value={edit.supplier_code} onChange={(e) => setEdit({ ...edit, supplier_code: e.target.value })} /><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Space>}
+    </Modal>
+  </Card>;
+}
+
+function PurchaseOrderPanel({ authHeaders }) {
+  const [rows, setRows] = useState([]); const [suppliers, setSuppliers] = useState([]); const [poPick, setPoPick] = useState();
+  const [line, setLine] = useState({ po_no: '', supplier_id: undefined, jan: '', item_name: '', qty: undefined, unit_cost: undefined, payment_status: 'unpaid', purchased_at: '' });
+  const load = async () => {
+    const [po, sp] = await Promise.all([api.get('/api/purchase-orders', authHeaders).then(r => r.data), api.get('/api/suppliers', authHeaders).then(r => r.data)]);
+    setRows(po); setSuppliers(sp);
+  };
+  useEffect(() => { load(); }, []);
+  return <Card className='panel' title='进货单管理'>
+    <Space wrap>
+      <Button className='click-btn' onClick={async () => { const resp = await api.get('/api/purchase-orders/import-template', { ...authHeaders, responseType: 'blob' }); const url = window.URL.createObjectURL(new Blob([resp.data])); const a = document.createElement('a'); a.href = url; a.download = 'purchase_order_template.xlsx'; a.click(); window.URL.revokeObjectURL(url); }}>下载导入模板</Button>
+      <Upload accept='.xlsx' showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { const fd = new FormData(); fd.append('file', file); await api.post('/api/purchase-orders/import-excel', fd, { ...authHeaders, headers: { ...authHeaders.headers, 'Content-Type': 'multipart/form-data' } }); message.success('导入成功'); load(); onSuccess('ok'); } catch (e) { message.error(e?.response?.data?.detail || '导入失败'); onError(e); } }}><Button className='click-btn' icon={<UploadOutlined />}>批量导入</Button></Upload>
+      <Select placeholder='进货单号' style={{ width: 220 }} value={poPick} options={rows.map(r => ({ label: r.po_no, value: r.id }))} onChange={setPoPick} />
+      <Button className='click-btn' onClick={async () => { if (!poPick) return; await api.post(`/api/purchase-orders/${poPick}/status`, { status: 'checked_inbound' }, authHeaders); message.success('状态已更新'); load(); }}>修改进货状态</Button>
+    </Space>
+    <Space wrap style={{ marginTop: 8 }}>
+      <Input placeholder='进货单号' value={line.po_no} onChange={(e) => setLine({ ...line, po_no: e.target.value })} />
+      <Select placeholder='供应商ID' style={{ width: 140 }} value={line.supplier_id} options={suppliers.map(s => ({ label: `${s.id}-${s.name}`, value: s.id }))} onChange={(v) => setLine({ ...line, supplier_id: v })} />
+      <Input placeholder='JAN' value={line.jan} onChange={(e) => setLine({ ...line, jan: e.target.value })} />
+      <Input placeholder='品名' value={line.item_name} onChange={(e) => setLine({ ...line, item_name: e.target.value })} />
+      <InputNumber placeholder='数量' min={1} value={line.qty} onChange={(v) => setLine({ ...line, qty: v ?? undefined })} />
+      <InputNumber placeholder='进货单价' min={0} value={line.unit_cost} onChange={(v) => setLine({ ...line, unit_cost: v ?? undefined })} />
+      <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/purchase-orders/lines', line, authHeaders); message.success('添加成功'); load(); }}>添加进货单</Button>
+    </Space>
+    <Table style={{ marginTop: 8 }} rowKey='id' dataSource={rows} columns={[
+      { title: '进货单号', dataIndex: 'po_no' }, { title: '进货时间', dataIndex: 'purchased_at' }, { title: '供应商ID', dataIndex: 'supplier_id' }, { title: '进货单合计进货价格', dataIndex: 'total_cost' },
+      { title: '操作', render: (_, r) => <Popconfirm title='确认删除进货单？' onConfirm={async () => { await api.delete(`/api/purchase-orders/${r.id}`, authHeaders); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm> },
+    ]} />
+  </Card>;
+}
+
+function FifoPendingPanel({ authHeaders }) {
+  const [rows, setRows] = useState([]); const [action, setAction] = useState('inbound_to_order');
+  const load = async () => setRows(await api.get('/api/fifo/pending', authHeaders).then(r => r.data));
+  useEffect(() => { load(); }, []);
+  return <Card className='panel' title='FIFO管理'>
+    <Table rowKey='id' dataSource={rows} columns={[
+      { title: '进货单号', dataIndex: 'source_po_no' },
+      { title: 'JAN', dataIndex: 'jan' },
+      { title: '品名', dataIndex: 'item_name' },
+      { title: '数量', dataIndex: 'qty' },
+      { title: '挂起原因', dataIndex: 'reason_text' },
+      { title: '状态', dataIndex: 'status' },
+      { title: '处理', render: (_, r) => <Space><Select style={{ width: 180 }} value={action} onChange={setAction} options={[{ label: '匹配订单后入库', value: 'inbound_to_order' }, { label: '转普通库存入库', value: 'inbound_stock' }, { label: '仅关闭任务', value: 'close_only' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/fifo/pending/${r.id}/resolve`, { action }, authHeaders); message.success('已处理'); load(); }}>执行</Button></Space> },
+    ]} />
   </Card>;
 }
 
