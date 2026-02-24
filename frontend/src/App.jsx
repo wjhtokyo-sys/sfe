@@ -235,7 +235,7 @@ function PurchaseOrderPanel({ authHeaders }) {
   useEffect(() => { load(); }, []);
 
   const statusTag = (v) => v === 'checked_inbound' ? <Tag color='green'>已盘点入库</Tag> : <Tag color='red'>已创建未盘点</Tag>;
-  const payTag = (v) => v === 'paid' ? '已支付' : '未支付';
+  const payTag = (v) => v === 'paid' ? <Tag color='green'>已支付</Tag> : <Tag color='red'>未支付</Tag>;
 
   return <Card className='panel' title='进货单管理'>
     <Space wrap>
@@ -264,7 +264,7 @@ function PurchaseOrderPanel({ authHeaders }) {
         title: '操作', render: (_, r) => <Space>
           {r.status === 'created_unchecked' && <Button className='click-btn' type='primary' onClick={async () => { await api.post(`/api/purchase-orders/${r.id}/status`, { status: 'checked_inbound' }, authHeaders); message.success('盘点成功'); load(); }}>盘点成功</Button>}
           <Button className='click-btn' onClick={async () => { const res = await api.get(`/api/purchase-orders/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>商品详细</Button>
-          <Popconfirm title='确认删除进货单？' onConfirm={async () => { await api.delete(`/api/purchase-orders/${r.id}`, authHeaders); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm>
+          {r.payment_status !== 'paid' && <Popconfirm title='确认删除进货单？' onConfirm={async () => { await api.delete(`/api/purchase-orders/${r.id}`, authHeaders); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm>}
         </Space>
       },
     ]} />
