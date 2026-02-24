@@ -6,6 +6,7 @@ from app.core.database import Base, engine
 from app.models import entities  # noqa: F401
 from app.api.sfe_api import router as sfe_router
 from app.api.auth_api import router as auth_router
+from seed import run as seed_run
 
 app = FastAPI(title="SFE API")
 
@@ -26,6 +27,7 @@ with engine.begin() as conn:
     if 'is_active' not in cols_customer:
         conn.execute(text("ALTER TABLE customers ADD COLUMN is_active BOOLEAN DEFAULT 1"))
 
+seed_run()
 app.include_router(auth_router)
 app.include_router(sfe_router)
 
