@@ -73,7 +73,10 @@ export default function App() {
   return <Layout style={{ minHeight: '100vh' }}>
     <Sider><div style={{ color: '#fff', padding: 16 }}>{role === 'customer' ? '客户管理页' : '超级管理员管理页'}</div><Menu theme='dark' mode='inline' selectedKeys={[menu]} items={role === 'customer' ? customerMenus : adminMenus} onClick={(e) => setMenu(e.key)} /></Sider>
     <Layout><Content className='page'>
-      <Space><Button className='click-btn' onClick={load}>刷新</Button><Button className='click-btn' danger onClick={logout}>登出</Button></Space>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <Space><Button className='click-btn' onClick={load}>刷新</Button></Space>
+        <Button className='click-btn' danger onClick={logout}>登出</Button>
+      </div>
 
       {role === 'customer' && menu === 'items' && <Card className='panel' title='商品信息查询'>
         <Space><Input placeholder='按JAN或关键字检索' value={kw} onChange={(e) => setKw(e.target.value)} /><Button className='click-btn' onClick={load}>搜索</Button></Space>
