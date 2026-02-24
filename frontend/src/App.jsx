@@ -168,7 +168,7 @@ function SuperCustomerPanel({ rows, authHeaders, reload }) {
 function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
   const [edit, setEdit] = useState(null);
   const [newItem, setNewItem] = useState({ jan: '', brand: '', name: '', spec: '', msrp_price: undefined, in_qty: undefined, is_active: true });
-  const cols = [{ title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' }, { title: '操作', render: (_, r) => <Button className='click-btn' onClick={() => setEdit(r)}>修改</Button> }];
+  const cols = [{ title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' }, { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => setEdit(r)}>修改</Button><Popconfirm title='确认删除该商品？' onConfirm={async () => { await api.delete(`/api/items/${r.id}`, authHeaders); message.success('删除成功'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> }];
   return <Card className='panel' title='商品信息管理'>
     <Space wrap>
       <Input placeholder='按JAN或关键字检索' value={kw} onChange={(e) => setKw(e.target.value)} />

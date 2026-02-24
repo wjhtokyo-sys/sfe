@@ -331,6 +331,16 @@ def update_item(item_id: int, payload: dict, db: Session = Depends(get_db), _=De
     return {'ok': True}
 
 
+@router.delete('/items/{item_id}')
+def delete_item(item_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    item = db.get(Item, item_id)
+    if not item:
+        raise HTTPException(404, '商品不存在')
+    db.delete(item)
+    db.commit()
+    return {'ok': True}
+
+
 @router.get('/items/import-template')
 def item_import_template(_=Depends(require_roles('super_admin'))):
     wb = Workbook()
