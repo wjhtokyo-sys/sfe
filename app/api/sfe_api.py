@@ -1,7 +1,7 @@
 from datetime import datetime
 from io import BytesIO
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
 from sqlalchemy.orm import Session
@@ -165,7 +165,7 @@ def purchase_order_import_template(_=Depends(require_roles('super_admin'))):
 
 
 @router.post('/purchase-orders/import-excel')
-def import_purchase_order_excel(supplier_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+def import_purchase_order_excel(supplier_id: int = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     supplier = db.get(Supplier, supplier_id)
     if not supplier:
         raise HTTPException(400, '供应商不存在，请先选择供应商')
