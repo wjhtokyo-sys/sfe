@@ -86,7 +86,7 @@ export default function App() {
     <Sider>
       <div style={{ color: '#fff', padding: 16 }}>
         <div>{role === 'customer' ? '客户管理页' : '超级管理员管理页'}</div>
-        {role === 'customer' && <div style={{ marginTop: 6, color: '#ffd666', fontSize: 12 }}>当前登录中：{me?.customer_name || '-'}</div>}
+        {role === 'customer' && <div style={{ marginTop: 6, color: '#ffd666', fontSize: 12 }}>当前登录中：{data.customers.find(c => c.id === me?.customer_id)?.name || '-'}</div>}
       </div>
       <Menu theme='dark' mode='inline' selectedKeys={[menu]} items={role === 'customer' ? customerMenus : adminMenus} onClick={(e) => setMenu(e.key)} />
     </Sider>
