@@ -487,7 +487,7 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll 
           return { label: `${customerName}+${d}下单${req}点`, value: o.id };
         });
 
-      return <Space>
+      return <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <Select
           placeholder='客户名与订单信息'
           style={{ width: 300 }}
@@ -495,8 +495,7 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll 
           options={options}
           onChange={(v) => setMultiPick({ ...multiPick, [r.id]: v })}
         />
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <div style={{ height: 6 }} />
+        <Space>
           <InputNumber
             min={1}
             placeholder='数量'
@@ -504,23 +503,23 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll 
             value={multiQty[r.id]}
             onChange={(v) => setMultiQty({ ...multiQty, [r.id]: v })}
           />
-        </div>
-        <Button className='click-btn' type='primary' onClick={async () => {
-          const orderId = multiPick[r.id];
-          const qty = Number(multiQty[r.id] || 0);
-          if (!orderId || !qty) { message.error('客户名与订单信息、数量必须同时填写'); return; }
-          try {
-            await api.post(`/api/fifo/pending/${r.id}/match`, { order_id: orderId, qty }, authHeaders);
-            message.success('匹配成功');
-            setMultiQty({ ...multiQty, [r.id]: undefined });
-            load();
-            reloadAll?.();
-          } catch (e) {
-            message.error(e?.response?.data?.detail || '匹配失败');
-          }
-        }}>匹配</Button>
-        <Popconfirm title='确认删除该挂起记录？' onConfirm={async () => { await api.delete(`/api/fifo/pending/${r.id}`, authHeaders); message.success('删除成功'); load(); reloadAll?.(); }}><Button className='click-btn' danger>删除</Button></Popconfirm>
-      </Space>;
+          <Button className='click-btn' type='primary' onClick={async () => {
+            const orderId = multiPick[r.id];
+            const qty = Number(multiQty[r.id] || 0);
+            if (!orderId || !qty) { message.error('客户名与订单信息、数量必须同时填写'); return; }
+            try {
+              await api.post(`/api/fifo/pending/${r.id}/match`, { order_id: orderId, qty }, authHeaders);
+              message.success('匹配成功');
+              setMultiQty({ ...multiQty, [r.id]: undefined });
+              load();
+              reloadAll?.();
+            } catch (e) {
+              message.error(e?.response?.data?.detail || '匹配失败');
+            }
+          }}>匹配</Button>
+          <Popconfirm title='确认删除该挂起记录？' onConfirm={async () => { await api.delete(`/api/fifo/pending/${r.id}`, authHeaders); message.success('删除成功'); load(); reloadAll?.(); }}><Button className='click-btn' danger>删除</Button></Popconfirm>
+        </Space>
+      </div>;
     },
   };
 
