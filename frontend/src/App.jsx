@@ -80,6 +80,7 @@ export default function App() {
       if (btn.disabled || btn.dataset.locked === '1') {
         evt.preventDefault();
         evt.stopPropagation();
+        message.warning('操作过快，请稍后重试');
         return;
       }
       btn.dataset.locked = '1';
@@ -227,10 +228,37 @@ function SuperCustomerPanel({ rows, customers, authHeaders, reload }) {
       <Input placeholder='客户登录账号' value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} />
       <Input.Password placeholder='客户登录密码' value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
       <Input placeholder='客户名称' value={newUser.customer_name} onChange={(e) => setNewUser({ ...newUser, customer_name: e.target.value })} />
-      <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/super/customers', newUser, authHeaders); message.success('新增客户成功'); setNewUser({ username: '', password: '', customer_name: '' }); reload(); }}>新增客户</Button>
+      <Button className='click-btn' type='primary' onClick={async () => {
+        if (!String(newUser.username || '').trim() || !String(newUser.password || '').trim() || !String(newUser.customer_name || '').trim()) {
+          message.error('客户登录账号、客户登录密码、客户名称必须填写');
+          return;
+        }
+        try {
+          await api.post('/api/super/customers', newUser, authHeaders);
+          message.success('新增客户成功');
+          setNewUser({ username: '', password: '', customer_name: '' });
+          reload();
+        } catch (e) {
+          message.error(e?.response?.data?.detail || '新增客户失败');
+        }
+      }}>新增客户</Button>
     </Space>
     <Table rowKey={(r) => r.user_id || `c-${r.customer_id}`} columns={cols} dataSource={mergedRows} />
-    <Modal open={!!edit} title='修改客户账号' onCancel={() => setEdit(null)} onOk={async () => { if (edit.user_id) { await api.patch(`/api/super/customers/${edit.user_id}`, { username: editUsername || undefined, customer_name: editCustomerName || undefined, password: pwd || undefined, is_active: active }, authHeaders); } else { await api.patch(`/api/super/customers/customer/${edit.customer_id}`, { customer_name: editCustomerName || undefined, is_active: active }, authHeaders); } message.success('修改成功'); setEdit(null); reload(); }}>
+    <Modal open={!!edit} title='修改客户账号' onCancel={() => setEdit(null)} onOk={async () => {
+      if (!String(editCustomerName || '').trim()) { message.error('客户名不能为空'); return; }
+      try {
+        if (edit.user_id) {
+          await api.patch(`/api/super/customers/${edit.user_id}`, { username: editUsername || undefined, customer_name: editCustomerName || undefined, password: pwd || undefined, is_active: active }, authHeaders);
+        } else {
+          await api.patch(`/api/super/customers/customer/${edit.customer_id}`, { customer_name: editCustomerName || undefined, is_active: active }, authHeaders);
+        }
+        message.success('修改成功');
+        setEdit(null);
+        reload();
+      } catch (e) {
+        message.error(e?.response?.data?.detail || '修改失败');
+      }
+    }}>
       <Space direction='vertical' style={{ width: '100%' }}>
         <Input placeholder='用户名' value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
         <Input placeholder='客户名' value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} />
@@ -737,7 +765,17 @@ function DatabaseOpsPanel({ authHeaders }) {
 
 function MergeBillBox({ orderIds, authHeaders, reload }) {
   const [price, setPrice] = useState(1);
-  return <Space style={{ marginTop: 8 }}><InputNumber min={1} value={price} onChange={(v) => setPrice(v || 1)} /><Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/bills/from-orders', { order_ids: orderIds, sale_unit_price: price }, authHeaders); message.success('已合并生成新账单'); reload(); }}>合并选中订单生成账单</Button></Space>;
+  return <Space style={{ marginTop: 8 }}><InputNumber min={1} value={price} onChange={(v) => setPrice(v || 1)} /><Button className='click-btn' type='primary' onClick={async () => {
+    if (!Array.isArray(orderIds) || !orderIds.length) { message.error('请先选择订单'); return; }
+    if (!Number(price) || Number(price) <= 0) { message.error('单价必须大于0'); return; }
+    try {
+      await api.post('/api/bills/from-orders', { order_ids: orderIds, sale_unit_price: price }, authHeaders);
+      message.success('已合并生成新账单');
+      reload();
+    } catch (e) {
+      message.error(e?.response?.data?.detail || '合并生成账单失败');
+    }
+  }}>合并选中订单生成账单</Button></Space>;
 }
 
 function AdminBills({ role, authHeaders, bills, customers, allocations, reload }) {
@@ -803,7 +841,7 @@ function HistoryBillsPanel({ role, bills, customers, authHeaders }) {
       { title: '账单金额', dataIndex: 'total_amount', render: (v) => fmtJPY(v) },
       { title: '客户', dataIndex: 'customer_name' },
       { title: '归档时间', dataIndex: 'archived_at', render: fmt },
-      { title: '操作', render: (_, r) => <Button className='click-btn' loading={loading} onClick={async () => { setLoading(true); try { const res = await api.get(`/api/bills/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); } finally { setLoading(false); } }}>查看账单明细</Button> },
+      { title: '操作', render: (_, r) => <Button className='click-btn' loading={loading} onClick={async () => { setLoading(true); try { const res = await api.get(`/api/bills/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); } catch (e) { message.error(e?.response?.data?.detail || '读取账单明细失败'); } finally { setLoading(false); } }}>查看账单明细</Button> },
     ]} />
     <Modal open={detailOpen} title='账单明细' footer={null} onCancel={() => setDetailOpen(false)} width={760}>
       <Table rowKey='id' pagination={false} dataSource={detailRows} columns={[
