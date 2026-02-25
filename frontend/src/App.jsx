@@ -70,7 +70,7 @@ export default function App() {
   </div>;
 
   const customerMenus = [{ key: 'items', label: '商品信息查询' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }];
-  const adminMenus = [{ key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: '客户订单管理' }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货未盘点' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }, { key: 'suppliers', label: '供应商管理' }, { key: 'customers', label: '客户管理' }, { key: 'db_ops', label: '数据库操作' }];
+  const adminMenus = [{ key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: '客户订单管理' }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货一览' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }, { key: 'suppliers', label: '供应商管理' }, { key: 'customers', label: '客户管理' }, { key: 'db_ops', label: '数据库操作' }];
 
   const customerItemCols = [
     { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' },
@@ -120,7 +120,7 @@ export default function App() {
 
       {role !== 'customer' && menu === 'purchase_orders' && <PurchaseOrderPanel authHeaders={authHeaders} />}
 
-      {role !== 'customer' && menu === 'arrival_unchecked' && <Card className='panel' title='到货未盘点' />}
+      {role !== 'customer' && menu === 'arrival_unchecked' && <ArrivalOverviewPanel authHeaders={authHeaders} />}
 
       {role !== 'customer' && menu === 'fifo' && <FifoPendingPanel authHeaders={authHeaders} />}
 
@@ -330,6 +330,33 @@ function FifoPendingPanel({ authHeaders }) {
       { title: '挂起原因', dataIndex: 'reason_text' },
       { title: '状态', dataIndex: 'status' },
       { title: '处理', render: (_, r) => <Space><Select style={{ width: 180 }} value={action} onChange={setAction} options={[{ label: '匹配订单后入库', value: 'inbound_to_order' }, { label: '转普通库存入库', value: 'inbound_stock' }, { label: '仅关闭任务', value: 'close_only' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/fifo/pending/${r.id}/resolve`, { action }, authHeaders); message.success('已处理'); load(); }}>执行</Button></Space> },
+    ]} />
+  </Card>;
+}
+
+function ArrivalOverviewPanel({ authHeaders }) {
+  const [rows, setRows] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const load = async () => {
+    const [po, sp] = await Promise.all([
+      api.get('/api/purchase-orders', authHeaders).then(r => r.data),
+      api.get('/api/suppliers', authHeaders).then(r => r.data),
+    ]);
+    setRows(po || []);
+    setSuppliers(sp || []);
+  };
+  useEffect(() => { load(); }, []);
+  const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
+  const payTag = (v) => v === 'paid' ? <Tag color='green'>已支付</Tag> : <Tag color='red'>未支付</Tag>;
+  const checkTag = (v) => v === 'checked_inbound' ? <Tag color='green'>已盘点入库</Tag> : <Tag color='red'>已创建未盘点</Tag>;
+  return <Card className='panel' title='到货一览'>
+    <Table rowKey='id' dataSource={rows} columns={[
+      { title: '进货单号', dataIndex: 'po_no' },
+      { title: '到货时间', dataIndex: 'purchased_at', render: fmtDate },
+      { title: '供应商名', dataIndex: 'supplier_id', render: (v) => suppliers.find(s => s.id === v)?.name || `供应商${v}` },
+      { title: '合计进货价格', dataIndex: 'total_cost' },
+      { title: '付款状态', dataIndex: 'payment_status', render: payTag },
+      { title: '盘点状态', dataIndex: 'status', render: checkTag },
     ]} />
   </Card>;
 }
