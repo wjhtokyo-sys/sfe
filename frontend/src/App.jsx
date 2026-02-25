@@ -266,6 +266,7 @@ function SupplierPanel({ authHeaders }) {
 function PurchaseOrderPanel({ authHeaders }) {
   const [rows, setRows] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [items, setItems] = useState([]);
   const [importSupplierId, setImportSupplierId] = useState();
   const [manualSupplierId, setManualSupplierId] = useState();
   const [pickedPoIds, setPickedPoIds] = useState([]);
@@ -274,8 +275,12 @@ function PurchaseOrderPanel({ authHeaders }) {
   const [lineRows, setLineRows] = useState([{ jan: '', item_name: '', qty: undefined, unit_cost: undefined }]);
 
   const load = async () => {
-    const [po, sp] = await Promise.all([api.get('/api/purchase-orders', authHeaders).then(r => r.data), api.get('/api/suppliers', authHeaders).then(r => r.data)]);
-    setRows(po); setSuppliers(sp);
+    const [po, sp, it] = await Promise.all([
+      api.get('/api/purchase-orders', authHeaders).then(r => r.data),
+      api.get('/api/suppliers', authHeaders).then(r => r.data),
+      api.get('/api/items', authHeaders).then(r => r.data),
+    ]);
+    setRows(po); setSuppliers(sp); setItems(it || []);
   };
   useEffect(() => { load(); }, []);
 
@@ -316,7 +321,14 @@ function PurchaseOrderPanel({ authHeaders }) {
 
     {lineRows.map((row, idx) => <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap', justifyContent: 'flex-start' }} key={idx}>
       <Input style={{ width: '20ch' }} placeholder='JAN' value={row.jan} onPaste={(e) => handleJanPaste(e, idx)} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, jan: e.target.value } : r))} />
-      <Input style={{ width: '60ch' }} placeholder='品名' value={row.item_name} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, item_name: e.target.value } : r))} />
+      <Input style={{ width: '60ch' }} placeholder='品名' value={row.item_name} onFocus={() => {
+        if ((row.item_name || '').trim()) return;
+        const jan = (row.jan || '').trim();
+        if (!jan) return;
+        const hit = items.find(it => String(it.jan || '').trim() === jan);
+        if (!hit) return;
+        setLineRows(lineRows.map((r, i) => i === idx ? { ...r, item_name: hit.name || r.item_name } : r));
+      }} onChange={(e) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, item_name: e.target.value } : r))} />
       <InputNumber style={{ width: '10ch' }} placeholder='数量' min={1} value={row.qty} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, qty: v ?? undefined } : r))} />
       <InputNumber style={{ width: '15ch' }} placeholder='进货单价' min={0} value={row.unit_cost} onChange={(v) => setLineRows(lineRows.map((r, i) => i === idx ? { ...r, unit_cost: v ?? undefined } : r))} />
       {idx === 0 && <>
