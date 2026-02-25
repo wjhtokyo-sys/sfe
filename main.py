@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -30,7 +32,8 @@ with engine.begin() as conn:
     if 'archived_at' not in cols_bill:
         conn.execute(text("ALTER TABLE bills ADD COLUMN archived_at DATETIME"))
 
-seed_run()
+if os.getenv('SFE_RUN_SEED', '0') == '1':
+    seed_run()
 app.include_router(auth_router)
 app.include_router(sfe_router)
 
