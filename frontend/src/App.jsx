@@ -99,7 +99,7 @@ export default function App() {
         {role === 'super_admin' && <Space style={{ marginBottom: 8 }}>
           <Select
             allowClear
-            placeholder='按客户名筛选'
+            placeholder='客户名'
             style={{ width: 220 }}
             value={orderCustomerFilter}
             options={data.customers.map(c => ({ label: c.name, value: c.id }))}
