@@ -103,6 +103,36 @@ def super_delete_customer_user(user_id: int, db: Session = Depends(get_db), _=De
     return {'ok': True}
 
 
+@router.patch('/super/customers/customer/{customer_id}')
+def super_update_customer_only(customer_id: int, payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    c = db.get(Customer, customer_id)
+    if not c:
+        raise HTTPException(404, '客户不存在')
+    if payload.get('customer_name'):
+        c.name = str(payload.get('customer_name')).strip()
+    if 'is_active' in payload:
+        c.is_active = bool(payload.get('is_active'))
+    db.commit()
+    return {'ok': True}
+
+
+@router.delete('/super/customers/customer/{customer_id}')
+def super_delete_customer_only(customer_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    c = db.get(Customer, customer_id)
+    if not c:
+        raise HTTPException(404, '客户不存在')
+    has_user = db.query(User).filter(User.customer_id == customer_id).first()
+    if has_user:
+        raise HTTPException(400, '该客户存在账号，请先删除账号')
+    has_order = db.query(CustomerOrder).filter(CustomerOrder.customer_id == customer_id).first()
+    has_bill = db.query(Bill).filter(Bill.customer_id == customer_id).first()
+    if has_order or has_bill:
+        raise HTTPException(400, '该客户已有业务数据，禁止删除')
+    db.delete(c)
+    db.commit()
+    return {'ok': True}
+
+
 @router.get('/suppliers')
 def list_suppliers(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     return db.query(Supplier).order_by(Supplier.id.desc()).all()

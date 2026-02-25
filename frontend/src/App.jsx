@@ -120,7 +120,7 @@ export default function App() {
 
       {role !== 'customer' && menu === 'suppliers' && <SupplierPanel authHeaders={authHeaders} />}
 
-      {role !== 'customer' && menu === 'customers' && <SuperCustomerPanel rows={data.superCustomers} authHeaders={authHeaders} reload={load} />}
+      {role !== 'customer' && menu === 'customers' && <SuperCustomerPanel rows={data.superCustomers} customers={data.customers} authHeaders={authHeaders} reload={load} />}
       {role !== 'customer' && menu === 'db_ops' && <DatabaseOpsPanel authHeaders={authHeaders} />}
 
       {role !== 'customer' && menu === 'items_admin' && <ItemAdminPanel items={data.items} kw={kw} setKw={setKw} load={load} authHeaders={authHeaders} />}
@@ -145,14 +145,15 @@ function CustomerOrderBtn({ row, me, authHeaders, reload }) {
   </>;
 }
 
-function SuperCustomerPanel({ rows, authHeaders, reload }) {
+function SuperCustomerPanel({ rows, customers, authHeaders, reload }) {
   const [edit, setEdit] = useState(null); const [pwd, setPwd] = useState(''); const [active, setActive] = useState(true);
   const [editUsername, setEditUsername] = useState('');
   const [editCustomerName, setEditCustomerName] = useState('');
   const [newUser, setNewUser] = useState({ username: '', password: '', customer_name: '' });
+  const mergedRows = [...rows, ...customers.filter(c => !rows.find(r => r.customer_id === c.id)).map(c => ({ user_id: null, username: '-', is_active: c.is_active, customer_id: c.id, customer_name: c.name, customer_active: c.is_active }))];
   const cols = [
     { title: '用户名', dataIndex: 'username' }, { title: '客户名', dataIndex: 'customer_name' }, { title: '激活', dataIndex: 'is_active', render: (v) => <Tag>{v ? '启用' : '停用'}</Tag> },
-    { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => { setEdit(r); setPwd(''); setActive(r.is_active); setEditUsername(r.username || ''); setEditCustomerName(r.customer_name || ''); }}>修改</Button><Popconfirm title='确认删除客户？' onConfirm={async () => { await api.delete(`/api/super/customers/${r.user_id}`, authHeaders); message.success('已删除'); reload(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
+    { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => { setEdit(r); setPwd(''); setActive(r.is_active); setEditUsername(r.username || ''); setEditCustomerName(r.customer_name || ''); }}>修改</Button><Popconfirm title='确认删除客户？' onConfirm={async () => { try { if (r.user_id) await api.delete(`/api/super/customers/${r.user_id}`, authHeaders); else await api.delete(`/api/super/customers/customer/${r.customer_id}`, authHeaders); message.success('已删除'); reload(); } catch (e) { message.error(e?.response?.data?.detail || '删除失败'); } }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
   ];
   return <Card className='panel' title='客户管理'>
     <Space wrap style={{ marginBottom: 8 }}>
@@ -161,8 +162,8 @@ function SuperCustomerPanel({ rows, authHeaders, reload }) {
       <Input placeholder='客户名称' value={newUser.customer_name} onChange={(e) => setNewUser({ ...newUser, customer_name: e.target.value })} />
       <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/super/customers', newUser, authHeaders); message.success('新增客户成功'); setNewUser({ username: '', password: '', customer_name: '' }); reload(); }}>新增客户</Button>
     </Space>
-    <Table rowKey='user_id' columns={cols} dataSource={rows} />
-    <Modal open={!!edit} title='修改客户账号' onCancel={() => setEdit(null)} onOk={async () => { await api.patch(`/api/super/customers/${edit.user_id}`, { username: editUsername || undefined, customer_name: editCustomerName || undefined, password: pwd || undefined, is_active: active }, authHeaders); message.success('修改成功'); setEdit(null); reload(); }}>
+    <Table rowKey={(r) => r.user_id || `c-${r.customer_id}`} columns={cols} dataSource={mergedRows} />
+    <Modal open={!!edit} title='修改客户账号' onCancel={() => setEdit(null)} onOk={async () => { if (edit.user_id) { await api.patch(`/api/super/customers/${edit.user_id}`, { username: editUsername || undefined, customer_name: editCustomerName || undefined, password: pwd || undefined, is_active: active }, authHeaders); } else { await api.patch(`/api/super/customers/customer/${edit.customer_id}`, { customer_name: editCustomerName || undefined, is_active: active }, authHeaders); } message.success('修改成功'); setEdit(null); reload(); }}>
       <Space direction='vertical' style={{ width: '100%' }}>
         <Input placeholder='用户名' value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
         <Input placeholder='客户名' value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} />
