@@ -329,7 +329,7 @@ function FifoPendingPanel({ authHeaders }) {
     { title: '品名', dataIndex: 'item_name' },
     { title: '数量', dataIndex: 'qty' },
     { title: '进货价格', dataIndex: 'unit_cost' },
-    { title: '操作', render: (_, r) => <Space><Select style={{ width: 180 }} value={action} onChange={setAction} options={[{ label: '匹配订单后入库', value: 'inbound_to_order' }, { label: '转普通库存入库', value: 'inbound_stock' }, { label: '仅关闭任务', value: 'close_only' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/fifo/pending/${r.id}/resolve`, { action }, authHeaders); message.success('已处理'); load(); }}>执行</Button></Space> },
+    { title: '操作', render: (_, r) => <Space><Select style={{ width: 180 }} value={action} onChange={setAction} options={[{ label: '匹配订单后入库', value: 'inbound_to_order' }, { label: '转普通库存入库', value: 'inbound_stock' }, { label: '仅关闭任务', value: 'close_only' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/fifo/pending/${r.id}/resolve`, { action }, authHeaders); message.success('已处理'); load(); }}>执行</Button><Popconfirm title='确认删除该挂起记录？' onConfirm={async () => { await api.delete(`/api/fifo/pending/${r.id}`, authHeaders); message.success('删除成功'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
   ];
   const multiRows = rows.filter(r => r.reason_code === 'multi_customer_match' && r.status === 'pending');
   const noMatchRows = rows.filter(r => r.reason_code === 'no_order_match' && r.status === 'pending');
@@ -352,7 +352,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
   useEffect(() => { load(); }, []);
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
   return <Card className='panel' title='到货一览'>
-    <Table rowKey={(r, i) => `${r.po_no}-${r.jan}-${i}`} dataSource={rows} columns={[
+    <Table rowKey={(r) => r.line_id ?? `${r.po_no}-${r.jan}`} dataSource={rows} columns={[
       { title: '进货单号', dataIndex: 'po_no' },
       { title: '进货日期', dataIndex: 'purchased_at', render: fmtDate },
       { title: 'JAN', dataIndex: 'jan' },
@@ -360,6 +360,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
       { title: '客户名', dataIndex: 'customer_name' },
       { title: '数量', dataIndex: 'qty' },
       { title: '采购单价', dataIndex: 'unit_cost' },
+      { title: '操作', render: (_, r) => <Popconfirm title='确认删除该到货明细？' onConfirm={async () => { try { await api.delete(`/api/purchase-order-lines/${r.line_id}`, authHeaders); message.success('删除成功'); load(); } catch (e) { message.error(e?.response?.data?.detail || '删除失败'); } }}><Button className='click-btn' danger>删除</Button></Popconfirm> },
     ]} />
   </Card>;
 }

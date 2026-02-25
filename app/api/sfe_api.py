@@ -242,6 +242,28 @@ def list_purchase_order_lines(po_id: int, db: Session = Depends(get_db), _=Depen
     return db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po_id).order_by(PurchaseOrderLine.id.asc()).all()
 
 
+@router.delete('/purchase-order-lines/{line_id}')
+def delete_purchase_order_line(line_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    line = db.get(PurchaseOrderLine, line_id)
+    if not line:
+        raise HTTPException(404, '到货明细不存在')
+    po = db.get(PurchaseOrder, line.purchase_order_id)
+    if po and po.status == 'checked_inbound':
+        raise HTTPException(400, '已盘点入库的到货明细不可删除')
+
+    db.query(FifoPendingTask).filter(FifoPendingTask.purchase_order_line_id == line_id).delete()
+    db.delete(line)
+
+    if po:
+        remain = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
+        po.total_cost = float(sum((r.line_total or 0) for r in remain))
+        if not remain:
+            db.delete(po)
+
+    db.commit()
+    return {'ok': True}
+
+
 @router.get('/arrival-overview')
 def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     rows = (
@@ -262,6 +284,7 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
                 customer_name = ' / '.join(names)
 
         out.append({
+            'line_id': ln.id,
             'po_no': po.po_no,
             'purchased_at': po.purchased_at,
             'jan': ln.jan,
@@ -495,6 +518,16 @@ def list_fifo_pending(db: Session = Depends(get_db), _=Depends(require_roles('su
             'status': t.status,
         })
     return out
+
+
+@router.delete('/fifo/pending/{task_id}')
+def delete_fifo_pending_task(task_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    task = db.get(FifoPendingTask, task_id)
+    if not task:
+        raise HTTPException(404, '挂起任务不存在')
+    db.delete(task)
+    db.commit()
+    return {'ok': True}
 
 
 @router.post('/fifo/pending/{task_id}/resolve')
