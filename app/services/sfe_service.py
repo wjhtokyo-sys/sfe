@@ -148,7 +148,7 @@ def build_bill(db: Session, customer_id: int, allocation_ids: list[int], sale_un
         if a.status != "active":
             raise HTTPException(400, f"allocation {a.id} is not active")
 
-    bill_no = f"B{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    bill_no = f"B{datetime.now().strftime('%Y%m%d%H%M%S')}"
     bill = Bill(customer_id=customer_id, bill_no=bill_no, status="issued")
     db.add(bill)
     db.flush()
@@ -206,23 +206,23 @@ def set_bill_stage(bill: Bill, stage: str):
     elif stage == "confirmed":
         bill.status = "issued"
         bill.payment_status = "received"
-        bill.payment_confirmed_at = datetime.utcnow()
+        bill.payment_confirmed_at = datetime.now()
         bill.shipping_status = "not_shipped"
     elif stage == "shipped":
         bill.status = "issued"
         bill.payment_status = "received"
-        bill.payment_confirmed_at = bill.payment_confirmed_at or datetime.utcnow()
+        bill.payment_confirmed_at = bill.payment_confirmed_at or datetime.now()
         bill.shipping_status = "shipped"
     elif stage == "received":
         bill.status = "issued"
         bill.payment_status = "received"
-        bill.payment_confirmed_at = bill.payment_confirmed_at or datetime.utcnow()
+        bill.payment_confirmed_at = bill.payment_confirmed_at or datetime.now()
         bill.shipping_status = "delivered"
     elif stage == "archived":
         bill.status = 'archived'
         bill.payment_status = 'received'
         bill.shipping_status = 'delivered'
-        bill.archived_at = datetime.utcnow()
+        bill.archived_at = datetime.now()
 
 
 def update_bill_state(db: Session, bill_id: int, action: str, actor_role: str):

@@ -15,7 +15,8 @@ from app.core.database import Base
 
 
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # 与本地系统时间同步（避免UTC偏移导致的日期/时间显示错位）
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 
 class Item(Base, TimestampMixin):

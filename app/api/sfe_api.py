@@ -431,7 +431,7 @@ def build_bill_from_arrival(payload: dict, db: Session = Depends(get_db), _=Depe
     if len(allocs) != len(alloc_ids):
         raise HTTPException(400, '存在不可用分配记录')
 
-    bill_no = f"B{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    bill_no = f"B{datetime.now().strftime('%Y%m%d%H%M%S')}"
     bill = Bill(customer_id=customer_id, bill_no=bill_no, status='issued')
     db.add(bill)
     db.flush()
@@ -746,7 +746,7 @@ def resolve_fifo_pending_task(task_id: int, payload: dict, db: Session = Depends
     task.status = 'resolved'
     task.resolution_note = action
     task.resolved_by = 'super_admin'
-    task.resolved_at = __import__('datetime').datetime.utcnow()
+    task.resolved_at = __import__('datetime').datetime.now()
     db.commit()
     return {'ok': True}
 
