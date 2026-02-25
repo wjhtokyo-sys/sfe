@@ -336,27 +336,20 @@ function FifoPendingPanel({ authHeaders }) {
 
 function ArrivalOverviewPanel({ authHeaders }) {
   const [rows, setRows] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
   const load = async () => {
-    const [po, sp] = await Promise.all([
-      api.get('/api/purchase-orders', authHeaders).then(r => r.data),
-      api.get('/api/suppliers', authHeaders).then(r => r.data),
-    ]);
-    setRows(po || []);
-    setSuppliers(sp || []);
+    const data = await api.get('/api/arrival-overview', authHeaders).then(r => r.data);
+    setRows(data || []);
   };
   useEffect(() => { load(); }, []);
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
-  const payTag = (v) => v === 'paid' ? <Tag color='green'>已支付</Tag> : <Tag color='red'>未支付</Tag>;
-  const checkTag = (v) => v === 'checked_inbound' ? <Tag color='green'>已盘点入库</Tag> : <Tag color='red'>已创建未盘点</Tag>;
   return <Card className='panel' title='到货一览'>
-    <Table rowKey='id' dataSource={rows} columns={[
+    <Table rowKey={(r, i) => `${r.po_no}-${r.jan}-${i}`} dataSource={rows} columns={[
       { title: '进货单号', dataIndex: 'po_no' },
-      { title: '到货时间', dataIndex: 'purchased_at', render: fmtDate },
-      { title: '供应商名', dataIndex: 'supplier_id', render: (v) => suppliers.find(s => s.id === v)?.name || `供应商${v}` },
-      { title: '合计进货价格', dataIndex: 'total_cost' },
-      { title: '付款状态', dataIndex: 'payment_status', render: payTag },
-      { title: '盘点状态', dataIndex: 'status', render: checkTag },
+      { title: '进货日期', dataIndex: 'purchased_at', render: fmtDate },
+      { title: 'JAN', dataIndex: 'jan' },
+      { title: '品名', dataIndex: 'item_name' },
+      { title: '数量', dataIndex: 'qty' },
+      { title: '采购单价', dataIndex: 'unit_cost' },
     ]} />
   </Card>;
 }

@@ -242,6 +242,27 @@ def list_purchase_order_lines(po_id: int, db: Session = Depends(get_db), _=Depen
     return db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po_id).order_by(PurchaseOrderLine.id.asc()).all()
 
 
+@router.get('/arrival-overview')
+def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    rows = (
+        db.query(PurchaseOrderLine, PurchaseOrder)
+        .join(PurchaseOrder, PurchaseOrder.id == PurchaseOrderLine.purchase_order_id)
+        .order_by(PurchaseOrder.purchased_at.desc(), PurchaseOrderLine.id.asc())
+        .all()
+    )
+    out = []
+    for ln, po in rows:
+        out.append({
+            'po_no': po.po_no,
+            'purchased_at': po.purchased_at,
+            'jan': ln.jan,
+            'item_name': ln.item_name_snapshot,
+            'qty': ln.qty,
+            'unit_cost': ln.unit_cost,
+        })
+    return out
+
+
 @router.post('/purchase-orders/lines')
 def add_purchase_order_line(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     supplier_id = int(payload.get('supplier_id') or 0)
@@ -327,22 +348,57 @@ def update_purchase_order_status(po_id: int, payload: dict, db: Session = Depend
         raise HTTPException(400, '状态不支持')
     if po.status == 'checked_inbound':
         raise HTTPException(400, '进货单已盘点入库，不能回退')
+
     if new_status == 'checked_inbound':
         lines = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
         for ln in lines:
-            matches = db.query(CustomerOrder).filter(CustomerOrder.jan_snapshot == ln.jan, CustomerOrder.status == 'open').all()
-            customer_ids = sorted({m.customer_id for m in matches})
-            if len(customer_ids) >= 2:
-                db.add(FifoPendingTask(purchase_order_line_id=ln.id, source_po_no=po.po_no, jan=ln.jan, item_name=ln.item_name_snapshot, qty=ln.qty, reason_code='multi_customer_match', reason_text='JAN命中多个客户未完成订单，需人工处理', status='pending'))
-                continue
-            if len(customer_ids) == 0:
-                db.add(FifoPendingTask(purchase_order_line_id=ln.id, source_po_no=po.po_no, jan=ln.jan, item_name=ln.item_name_snapshot, qty=ln.qty, reason_code='no_order_match', reason_text='未命中客户订单，需人工处理后再入库', status='pending'))
-                continue
-            lot = InventoryLot(item_id=matches[0].item_id, qty_received=ln.qty, qty_remaining=ln.qty, fifo_rank=db.query(InventoryLot).filter(InventoryLot.item_id == matches[0].item_id).count() + 1, location='PO_CHECKED')
+            item = db.query(Item).filter(Item.jan == ln.jan).first()
+            if not item:
+                item = Item(jan=ln.jan, brand='-', name=ln.item_name_snapshot or ln.jan, spec=None, msrp_price=0, in_qty=1, is_active=True)
+                db.add(item)
+                db.flush()
+
+            next_rank = db.query(InventoryLot).filter(InventoryLot.item_id == item.id).count() + 1
+            lot = InventoryLot(item_id=item.id, qty_received=ln.qty, qty_remaining=ln.qty, fifo_rank=next_rank, location='PO_CHECKED')
             db.add(lot)
+            db.flush()
+
+            open_orders = (
+                db.query(CustomerOrder)
+                .filter(CustomerOrder.item_id == item.id, CustomerOrder.status == 'open')
+                .order_by(CustomerOrder.created_at.asc(), CustomerOrder.id.asc())
+                .all()
+            )
+
+            remaining = lot.qty_remaining
+            for od in open_orders:
+                if remaining <= 0:
+                    break
+                need = (od.qty_requested or 0) - (od.qty_allocated or 0)
+                if need <= 0:
+                    continue
+                take = min(remaining, need)
+                alloc = Allocation(
+                    customer_id=od.customer_id,
+                    order_line_id=od.id,
+                    lot_id=lot.id,
+                    item_id=item.id,
+                    qty_allocated=take,
+                    fifo_rank_snapshot=lot.fifo_rank,
+                    status='active',
+                    allocated_by='purchase_checkin',
+                )
+                db.add(alloc)
+                od.qty_allocated = (od.qty_allocated or 0) + take
+                od.status = 'closed' if od.qty_allocated >= od.qty_requested else 'open'
+                remaining -= take
+
+            lot.qty_remaining = remaining
+
         po.status = 'checked_inbound'
     else:
         po.status = new_status
+
     db.commit()
     return {'ok': True}
 
