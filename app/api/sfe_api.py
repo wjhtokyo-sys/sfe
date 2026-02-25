@@ -368,17 +368,56 @@ def update_purchase_order_status(po_id: int, payload: dict, db: Session = Depend
                 db.add(item)
                 db.flush()
 
-            next_rank = db.query(InventoryLot).filter(InventoryLot.item_id == item.id).count() + 1
-            lot = InventoryLot(item_id=item.id, qty_received=ln.qty, qty_remaining=ln.qty, fifo_rank=next_rank, location='PO_CHECKED')
-            db.add(lot)
-            db.flush()
-
             open_orders = (
                 db.query(CustomerOrder)
                 .filter(CustomerOrder.item_id == item.id, CustomerOrder.status == 'open')
                 .order_by(CustomerOrder.created_at.asc(), CustomerOrder.id.asc())
                 .all()
             )
+            customer_ids = sorted({o.customer_id for o in open_orders})
+
+            if len(customer_ids) >= 2:
+                exists = db.query(FifoPendingTask).filter(
+                    FifoPendingTask.purchase_order_line_id == ln.id,
+                    FifoPendingTask.reason_code == 'multi_customer_match',
+                    FifoPendingTask.status == 'pending'
+                ).first()
+                if not exists:
+                    db.add(FifoPendingTask(
+                        purchase_order_line_id=ln.id,
+                        source_po_no=po.po_no,
+                        jan=ln.jan,
+                        item_name=ln.item_name_snapshot,
+                        qty=ln.qty,
+                        reason_code='multi_customer_match',
+                        reason_text='JAN命中多个客户未完成订单，需人工干预',
+                        status='pending',
+                    ))
+                continue
+
+            if len(customer_ids) == 0:
+                exists = db.query(FifoPendingTask).filter(
+                    FifoPendingTask.purchase_order_line_id == ln.id,
+                    FifoPendingTask.reason_code == 'no_order_match',
+                    FifoPendingTask.status == 'pending'
+                ).first()
+                if not exists:
+                    db.add(FifoPendingTask(
+                        purchase_order_line_id=ln.id,
+                        source_po_no=po.po_no,
+                        jan=ln.jan,
+                        item_name=ln.item_name_snapshot,
+                        qty=ln.qty,
+                        reason_code='no_order_match',
+                        reason_text='未命中客户订单，需人工处理',
+                        status='pending',
+                    ))
+                continue
+
+            next_rank = db.query(InventoryLot).filter(InventoryLot.item_id == item.id).count() + 1
+            lot = InventoryLot(item_id=item.id, qty_received=ln.qty, qty_remaining=ln.qty, fifo_rank=next_rank, location='PO_CHECKED')
+            db.add(lot)
+            db.flush()
 
             remaining = lot.qty_remaining
             for od in open_orders:
@@ -438,7 +477,24 @@ def reset_purchase_orders_status(payload: dict, db: Session = Depends(get_db), _
 
 @router.get('/fifo/pending')
 def list_fifo_pending(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
-    return db.query(FifoPendingTask).order_by(FifoPendingTask.id.desc()).all()
+    tasks = db.query(FifoPendingTask).order_by(FifoPendingTask.id.desc()).all()
+    out = []
+    for t in tasks:
+        ln = db.get(PurchaseOrderLine, t.purchase_order_line_id) if t.purchase_order_line_id else None
+        po = db.query(PurchaseOrder).filter(PurchaseOrder.po_no == t.source_po_no).first()
+        out.append({
+            'id': t.id,
+            'source_po_no': t.source_po_no,
+            'purchased_at': po.purchased_at if po else None,
+            'jan': t.jan,
+            'item_name': t.item_name,
+            'qty': t.qty,
+            'unit_cost': ln.unit_cost if ln else None,
+            'reason_code': t.reason_code,
+            'reason_text': t.reason_text,
+            'status': t.status,
+        })
+    return out
 
 
 @router.post('/fifo/pending/{task_id}/resolve')
