@@ -666,14 +666,63 @@ function ArrivalOverviewPanel({ authHeaders }) {
   const selectedRows = filteredBillRows.filter(r => pickedIds.includes(r.allocation_id));
   const purchaseTotal = selectedRows.reduce((s, r) => s + (Number(r.purchase_unit_price || 0) * Number(r.qty || 0)), 0);
   const salesTotal = selectedRows.reduce((s, r) => s + (Number(saleMap[r.allocation_id] || 0) * Number(r.qty || 0)), 0);
+  const profitRate = purchaseTotal > 0 ? ((salesTotal - purchaseTotal) / purchaseTotal) * 100 : null;
 
   return <Card className='panel' title='到货一览'>
     <Card size='small' title='账单生成表'>
-      <Space wrap style={{ marginBottom: 8 }}>
-        <Select placeholder='客户名' style={{ width: 220 }} value={customerId} options={customers.map(c => ({ label: c.name, value: c.id }))} onChange={(v) => { setCustomerId(v); loadBillRows(v); }} />
-        {/* 已移除“订单到货状态”下拉，直接显示所选客户全部到货 */}
-        <span>账单进货价合计：{fmtJPY(purchaseTotal)}</span>
-        <span>账单销售价合计：{fmtJPY(salesTotal)}</span>
+      <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Space wrap>
+            <Select placeholder='客户名' style={{ width: 220 }} value={customerId} options={customers.map(c => ({ label: c.name, value: c.id }))} onChange={(v) => { setCustomerId(v); loadBillRows(v); }} />
+            <Button className='click-btn' onClick={() => {
+              if (!pickedIds.length) { message.error('请先勾选进货信息'); return; }
+              const next = { ...saleMap };
+              selectedRows.forEach(r => { next[r.allocation_id] = Number(r.purchase_unit_price || 0); });
+              setSaleMap(next);
+              message.success('已填入进价');
+            }}>填进价</Button>
+            <Button className='click-btn' onClick={() => {
+              if (!pickedIds.length) { message.error('请先勾选进货信息'); return; }
+              const next = { ...saleMap };
+              selectedRows.forEach(r => {
+                const cur = Number(next[r.allocation_id] || 0);
+                next[r.allocation_id] = cur > 0 ? Math.round(cur * 1.08) : cur;
+              });
+              setSaleMap(next);
+              message.success('已增加8%');
+            }}>8%</Button>
+            <Button className='click-btn' onClick={() => {
+              if (!pickedIds.length) { message.error('请先勾选进货信息'); return; }
+              const next = { ...saleMap };
+              selectedRows.forEach(r => {
+                const cur = Number(next[r.allocation_id] || 0);
+                next[r.allocation_id] = cur > 0 ? Math.round(cur * 1.10) : cur;
+              });
+              setSaleMap(next);
+              message.success('已增加10%');
+            }}>10%</Button>
+            <Button className='click-btn' onClick={() => {
+              if (!pickedIds.length) { message.error('请先勾选进货信息'); return; }
+              const next = { ...saleMap };
+              selectedRows.forEach(r => {
+                const cur = Number(next[r.allocation_id] || 0);
+                next[r.allocation_id] = cur > 0 ? Math.round(cur * 1.13) : cur;
+              });
+              setSaleMap(next);
+              message.success('已增加13%');
+            }}>13%</Button>
+            <Button className='click-btn' onClick={() => {
+              if (!pickedIds.length) { message.error('请先勾选进货信息'); return; }
+              const next = { ...saleMap };
+              selectedRows.forEach(r => { next[r.allocation_id] = 0; });
+              setSaleMap(next);
+              message.success('已清空销售价格');
+            }}>清</Button>
+          </Space>
+          <div>账单进货价合计：{fmtJPY(purchaseTotal)}</div>
+          <div>账单销售价合计：{fmtJPY(salesTotal)}</div>
+          <div style={{ color: 'red', fontWeight: 700 }}>利润率：{profitRate === null ? '-' : `${profitRate.toFixed(2)}%`}</div>
+        </div>
         <Button className='click-btn' type='primary' disabled={!customerId || !pickedIds.length} onClick={async () => {
           const lines = pickedIds.map(id => ({ allocation_id: id, sale_unit_price: Number(saleMap[id] || 0) }));
           if (lines.some(x => !x.sale_unit_price || x.sale_unit_price <= 0)) { message.error('请填写所选行的销售价格'); return; }
@@ -685,7 +734,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
             message.error(e?.response?.data?.detail || '生成账单失败');
           }
         }}>生成账单</Button>
-      </Space>
+      </div>
       <Table rowKey='allocation_id' rowSelection={{ selectedRowKeys: pickedIds, onChange: (keys) => setPickedIds(keys) }} dataSource={filteredBillRows} columns={[
         { title: '进货日期', dataIndex: 'purchased_at', render: fmtDate },
         { title: 'JAN', dataIndex: 'jan' },
