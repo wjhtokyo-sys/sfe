@@ -718,6 +718,26 @@ function ArrivalOverviewPanel({ authHeaders }) {
               setSaleMap(next);
               message.success('已清空销售价格');
             }}>清</Button>
+            <Select
+              placeholder='常用利润率'
+              style={{ width: 140 }}
+              options={[
+                { label: '6.24%', value: 6.24 },
+                { label: '5%', value: 5 },
+                { label: '3%', value: 3 },
+                { label: '2%', value: 2 },
+              ]}
+              onChange={(rate) => {
+                if (!pickedIds.length) { message.error('请先勾选进货信息'); return; }
+                const next = { ...saleMap };
+                selectedRows.forEach(r => {
+                  const base = Number(r.purchase_unit_price || 0);
+                  next[r.allocation_id] = base > 0 ? Math.round(base * (1 + Number(rate || 0) / 100)) : 0;
+                });
+                setSaleMap(next);
+                message.success(`已按利润率${rate}%联动填充销售价格`);
+              }}
+            />
           </Space>
           <div>账单进货价合计：{fmtJPY(purchaseTotal)}</div>
           <div>账单销售价合计：{fmtJPY(salesTotal)}</div>
