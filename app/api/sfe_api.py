@@ -133,6 +133,67 @@ def super_delete_customer_only(customer_id: int, db: Session = Depends(get_db), 
     return {'ok': True}
 
 
+@router.get('/super/admin-users')
+def super_admin_users(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    users = db.query(User).filter(User.role.in_(['admin', 'super_admin'])).order_by(User.id.desc()).all()
+    return [{'user_id': u.id, 'username': u.username, 'role': u.role, 'is_active': u.is_active} for u in users]
+
+
+@router.post('/super/admin-users')
+def super_create_admin_user(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    username = str(payload.get('username', '')).strip()
+    password = str(payload.get('password', '')).strip()
+    role = str(payload.get('role', 'admin')).strip()
+    if role not in {'admin', 'super_admin'}:
+        raise HTTPException(400, '角色仅支持admin或super_admin')
+    if not username or not password:
+        raise HTTPException(400, '请填写用户名和密码')
+    if db.query(User).filter(User.username == username).first():
+        raise HTTPException(400, '用户名已存在')
+    db.add(User(username=username, password=password, role=role, is_active=True))
+    db.commit()
+    return {'ok': True}
+
+
+@router.patch('/super/admin-users/{user_id}')
+def super_update_admin_user(user_id: int, payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    u = db.get(User, user_id)
+    if not u or u.role not in {'admin', 'super_admin'}:
+        raise HTTPException(404, '管理账号不存在')
+    if payload.get('username'):
+        new_username = str(payload.get('username')).strip()
+        exists = db.query(User).filter(User.username == new_username, User.id != user_id).first()
+        if exists:
+            raise HTTPException(400, '用户名已存在')
+        u.username = new_username
+    if payload.get('password'):
+        u.password = str(payload.get('password')).strip()
+    if payload.get('role') in {'admin', 'super_admin'}:
+        u.role = payload.get('role')
+    if 'is_active' in payload:
+        u.is_active = bool(payload.get('is_active'))
+    db.commit()
+    return {'ok': True}
+
+
+@router.delete('/super/admin-users/{user_id}')
+def super_delete_admin_user(user_id: int, db: Session = Depends(get_db), me=Depends(get_current_user)):
+    if me.role != 'super_admin':
+        raise HTTPException(403, '没有权限')
+    if me.id == user_id:
+        raise HTTPException(400, '不能删除当前登录账号')
+    u = db.get(User, user_id)
+    if not u or u.role not in {'admin', 'super_admin'}:
+        raise HTTPException(404, '管理账号不存在')
+    if u.role == 'super_admin':
+        cnt = db.query(User).filter(User.role == 'super_admin', User.is_active == True, User.id != user_id).count()
+        if cnt < 1:
+            raise HTTPException(400, '至少保留一个可用超级管理员账号')
+    db.delete(u)
+    db.commit()
+    return {'ok': True}
+
+
 @router.get('/suppliers')
 def list_suppliers(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     return db.query(Supplier).order_by(Supplier.id.desc()).all()

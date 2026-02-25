@@ -12,7 +12,7 @@ export default function App() {
   const [menu, setMenu] = useState('items');
   const [me, setMe] = useState(null);
   const [kw, setKw] = useState('');
-  const [data, setData] = useState({ items: [], orders: [], bills: [], customers: [], lots: [], allocations: [], superCustomers: [] });
+  const [data, setData] = useState({ items: [], orders: [], bills: [], customers: [], lots: [], allocations: [], superCustomers: [], adminUsers: [] });
   const [orderPick, setOrderPick] = useState([]);
   const [fifoLot, setFifoLot] = useState({ item_id: undefined, qty_received: 1 });
   const [fifoOrderId, setFifoOrderId] = useState();
@@ -45,11 +45,11 @@ export default function App() {
         const sep = u.includes('?') ? '&' : '?';
         return api.get(`${u}${sep}_ts=${ts}`, noCacheHeaders).then(r => r.data).catch(() => []);
       };
-      const [items, orders, bills, customers, lots, allocations, superCustomers] = await Promise.all([
+      const [items, orders, bills, customers, lots, allocations, superCustomers, adminUsers] = await Promise.all([
         req(`/api/items${kw ? `?keyword=${encodeURIComponent(kw)}` : ''}`),
-        req('/api/orders'), req('/api/bills'), req('/api/customers'), req('/api/lots'), req('/api/allocations'), req('/api/super/customers'),
+        req('/api/orders'), req('/api/bills'), req('/api/customers'), req('/api/lots'), req('/api/allocations'), req('/api/super/customers'), req('/api/super/admin-users'),
       ]);
-      setData({ items, orders, bills, customers, lots, allocations, superCustomers });
+      setData({ items, orders, bills, customers, lots, allocations, superCustomers, adminUsers });
     } finally {
       setRefreshing(false);
     }
@@ -71,7 +71,7 @@ export default function App() {
 
   const customerMenus = [{ key: 'items', label: '商品信息查询' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }];
   const pendingOrderCount = (role === 'super_admin' ? data.orders.filter(o => o.status === 'open') : data.orders).length;
-  const adminMenus = [{ key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: <span style={{ position: 'relative', paddingRight: 10 }}>客户订单管理{pendingOrderCount > 0 && <span style={{ position: 'absolute', right: 0, top: 2, width: 8, height: 8, borderRadius: 999, background: '#ff4d4f', display: 'inline-block' }} />}</span> }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货一览' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }, { key: 'suppliers', label: '供应商管理' }, { key: 'customers', label: '客户管理' }, { key: 'db_ops', label: '数据库操作' }];
+  const adminMenus = [{ key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: <span style={{ position: 'relative', paddingRight: 10 }}>客户订单管理{pendingOrderCount > 0 && <span style={{ position: 'absolute', right: 0, top: 2, width: 8, height: 8, borderRadius: 999, background: '#ff4d4f', display: 'inline-block' }} />}</span> }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货一览' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }, { key: 'suppliers', label: '供应商管理' }, { key: 'customers', label: '账号管理' }, { key: 'db_ops', label: '数据库操作' }];
 
   const customerItemCols = [
     { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' },
@@ -120,7 +120,7 @@ export default function App() {
 
       {role !== 'customer' && menu === 'suppliers' && <SupplierPanel authHeaders={authHeaders} />}
 
-      {role !== 'customer' && menu === 'customers' && <SuperCustomerPanel rows={data.superCustomers} customers={data.customers} authHeaders={authHeaders} reload={load} />}
+      {role !== 'customer' && menu === 'customers' && <AccountManagePage customerRows={data.superCustomers} customers={data.customers} adminUsers={data.adminUsers} authHeaders={authHeaders} reload={load} />}
       {role !== 'customer' && menu === 'db_ops' && <DatabaseOpsPanel authHeaders={authHeaders} />}
 
       {role !== 'customer' && menu === 'items_admin' && <ItemAdminPanel items={data.items} kw={kw} setKw={setKw} load={load} authHeaders={authHeaders} />}
@@ -155,7 +155,7 @@ function SuperCustomerPanel({ rows, customers, authHeaders, reload }) {
     { title: '用户名', dataIndex: 'username' }, { title: '客户名', dataIndex: 'customer_name' }, { title: '激活', dataIndex: 'is_active', render: (v) => <Tag>{v ? '启用' : '停用'}</Tag> },
     { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => { setEdit(r); setPwd(''); setActive(r.is_active); setEditUsername(r.username || ''); setEditCustomerName(r.customer_name || ''); }}>修改</Button><Popconfirm title='确认删除客户？' onConfirm={async () => { try { if (r.user_id) await api.delete(`/api/super/customers/${r.user_id}`, authHeaders); else await api.delete(`/api/super/customers/customer/${r.customer_id}`, authHeaders); message.success('已删除'); reload(); } catch (e) { message.error(e?.response?.data?.detail || '删除失败'); } }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
   ];
-  return <Card className='panel' title='客户管理'>
+  return <Card className='panel' title='客户账号管理'>
     <Space wrap style={{ marginBottom: 8 }}>
       <Input placeholder='客户登录账号' value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} />
       <Input.Password placeholder='客户登录密码' value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
@@ -172,6 +172,41 @@ function SuperCustomerPanel({ rows, customers, authHeaders, reload }) {
       </Space>
     </Modal>
   </Card>;
+}
+
+function AdminAccountPanel({ adminUsers, authHeaders, reload }) {
+  const [edit, setEdit] = useState(null);
+  const [newUser, setNewUser] = useState({ username: '', password: '', role: 'admin' });
+  const cols = [
+    { title: '用户名', dataIndex: 'username' },
+    { title: '角色', dataIndex: 'role' },
+    { title: '激活', dataIndex: 'is_active', render: (v) => <Tag>{v ? '启用' : '停用'}</Tag> },
+    { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => setEdit({ ...r, password: '' })}>修改</Button><Popconfirm title='确认删除管理账号？' onConfirm={async () => { try { await api.delete(`/api/super/admin-users/${r.user_id}`, authHeaders); message.success('已删除'); reload(); } catch (e) { message.error(e?.response?.data?.detail || '删除失败'); } }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
+  ];
+  return <Card className='panel' title='管理账号管理'>
+    <Space wrap style={{ marginBottom: 8 }}>
+      <Input placeholder='管理账号' value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} />
+      <Input.Password placeholder='密码' value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
+      <Select style={{ width: 160 }} value={newUser.role} onChange={(v) => setNewUser({ ...newUser, role: v })} options={[{ label: '管理员', value: 'admin' }, { label: '超级管理员', value: 'super_admin' }]} />
+      <Button className='click-btn' type='primary' onClick={async () => { try { await api.post('/api/super/admin-users', newUser, authHeaders); message.success('新增管理账号成功'); setNewUser({ username: '', password: '', role: 'admin' }); reload(); } catch (e) { message.error(e?.response?.data?.detail || '新增失败'); } }}>新增管理账号</Button>
+    </Space>
+    <Table rowKey='user_id' columns={cols} dataSource={adminUsers || []} />
+    <Modal open={!!edit} title='修改管理账号' onCancel={() => setEdit(null)} onOk={async () => { try { await api.patch(`/api/super/admin-users/${edit.user_id}`, { username: edit.username, password: edit.password || undefined, role: edit.role, is_active: edit.is_active }, authHeaders); message.success('修改成功'); setEdit(null); reload(); } catch (e) { message.error(e?.response?.data?.detail || '修改失败'); } }}>
+      {edit && <Space direction='vertical' style={{ width: '100%' }}>
+        <Input value={edit.username} onChange={(e) => setEdit({ ...edit, username: e.target.value })} />
+        <Input.Password placeholder='新密码（留空不改）' value={edit.password} onChange={(e) => setEdit({ ...edit, password: e.target.value })} />
+        <Select value={edit.role} onChange={(v) => setEdit({ ...edit, role: v })} options={[{ label: '管理员', value: 'admin' }, { label: '超级管理员', value: 'super_admin' }]} />
+        <div>激活状态：<Switch checked={!!edit.is_active} onChange={(v) => setEdit({ ...edit, is_active: v })} /></div>
+      </Space>}
+    </Modal>
+  </Card>;
+}
+
+function AccountManagePage({ customerRows, customers, adminUsers, authHeaders, reload }) {
+  return <>
+    <SuperCustomerPanel rows={customerRows} customers={customers} authHeaders={authHeaders} reload={reload} />
+    <AdminAccountPanel adminUsers={adminUsers} authHeaders={authHeaders} reload={reload} />
+  </>;
 }
 
 function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
