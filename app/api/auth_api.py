@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, issue_token
 from app.core.database import get_db
-from app.models.entities import User
+from app.models.entities import Customer, User
 from app.schemas.auth import LoginIn
 
 router = APIRouter(prefix='/auth', tags=['Auth'])
@@ -28,5 +28,17 @@ def admin_login(payload: LoginIn, db: Session = Depends(get_db)):
 
 
 @router.get('/me')
-def me(user=Depends(get_current_user)):
-    return user
+def me(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    data = {
+        'id': user.id,
+        'username': user.username,
+        'role': user.role,
+        'is_active': user.is_active,
+        'customer_id': user.customer_id,
+    }
+    if user.customer_id:
+        c = db.get(Customer, user.customer_id)
+        data['customer_name'] = c.name if c else None
+    else:
+        data['customer_name'] = None
+    return data
