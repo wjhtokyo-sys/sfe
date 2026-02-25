@@ -1,3 +1,5 @@
+import os
+
 from app.core.database import SessionLocal
 from app.models.entities import Customer, Item, User
 
@@ -22,7 +24,7 @@ def run():
             db.add_all(users)
             db.commit()
 
-        if db.query(Item).count() < 20:
+        if os.getenv('SFE_SEED_ITEMS', '0') == '1' and db.query(Item).count() < 20:
             for i in range(1, 21):
                 jan = f'JAN{i:05d}'
                 exists = db.query(Item).filter(Item.jan == jan).first()
