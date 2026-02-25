@@ -1377,6 +1377,51 @@ def resolve_fifo_pending(allocation_id: int, decision: StateActionIn, _=Depends(
     return {'allocation_id': allocation_id, 'decision': decision.action, 'status': 'legacy_resolved'}
 
 
+@router.post('/db/reset-business-data')
+def db_reset_business_data(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    inspector = inspect(db.bind)
+    all_tables = [n for n in inspector.get_table_names() if not n.startswith('sqlite_')]
+
+    keep_tables = {'users', 'customers', 'items'}
+    target_tables = [t for t in all_tables if t not in keep_tables]
+
+    # 基于外键关系，按“子表 -> 父表”顺序清空，确保外键不冲突
+    deps = {t: set() for t in target_tables}
+    for t in target_tables:
+        for fk in inspector.get_foreign_keys(t):
+            parent = fk.get('referred_table')
+            if parent in target_tables:
+                deps[t].add(parent)
+
+    ordered = []
+    pending = {k: set(v) for k, v in deps.items()}
+    while pending:
+        ready = [t for t, parents in pending.items() if not parents]
+        if not ready:
+            # 兜底：遇到复杂环依赖时按名称稳定删除
+            ready = sorted(pending.keys())
+        for t in ready:
+            ordered.append(t)
+            pending.pop(t, None)
+        for t in list(pending.keys()):
+            pending[t] -= set(ready)
+
+    deleted = {}
+    for t in ordered:
+        cnt = db.execute(text(f'SELECT COUNT(1) c FROM "{t}"')).scalar() or 0
+        db.execute(text(f'DELETE FROM "{t}"'))
+        deleted[t] = int(cnt)
+
+    db.commit()
+    return {
+        'ok': True,
+        'keep_tables': sorted(list(keep_tables)),
+        'deleted_tables': ordered,
+        'deleted_counts': deleted,
+        'total_deleted_rows': int(sum(deleted.values())),
+    }
+
+
 @router.get('/db/tables')
 def db_tables(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     names = sorted([n for n in inspect(db.bind).get_table_names() if not n.startswith('sqlite_')])

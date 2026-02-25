@@ -825,7 +825,29 @@ function DatabaseOpsPanel({ authHeaders }) {
 
   useEffect(() => { loadTables(); }, []);
 
-  return <Card className='panel' title='数据库操作'>
+  return <Card
+    className='panel'
+    title='数据库操作'
+    extra={<Button className='click-btn' danger onClick={() => {
+      Modal.confirm({
+        title: '一键删除确认',
+        content: '将删除除 users / customers / items 之外的所有表数据（仅删数据，不改表结构）。是否继续？',
+        okText: '确认删除',
+        okButtonProps: { danger: true },
+        cancelText: '取消',
+        onOk: async () => {
+          try {
+            const res = await api.post('/api/db/reset-business-data', {}, authHeaders);
+            const total = res?.data?.total_deleted_rows || 0;
+            message.success(`清空完成，删除 ${total} 行数据`);
+            if (tableName) await loadRows();
+          } catch (e) {
+            message.error(e?.response?.data?.detail || '一键删除失败');
+          }
+        },
+      });
+    }}>一键删除（保留用户/客户/商品）</Button>}
+  >
     <Space wrap>
       <Select placeholder='选择表' style={{ width: 220 }} value={tableName} options={tables.map(t => ({ label: t, value: t }))} onChange={(v) => { setTableName(v); loadRows(v); }} />
       <Button className='click-btn' onClick={async () => { if (!tableName) { message.error('请先选择表'); return; } try { await loadRows(); message.success('读取成功'); } catch (e) { message.error(e?.response?.data?.detail || '读取失败'); } }}>读取表数据</Button>
