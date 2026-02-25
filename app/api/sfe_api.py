@@ -920,7 +920,24 @@ def list_bills(db: Session = Depends(get_db), user=Depends(get_current_user)):
     q = db.query(Bill)
     if user.role == 'customer':
         q = q.filter(Bill.customer_id == user.customer_id)
-    return q.order_by(Bill.id.desc()).all()
+    rows = q.order_by(Bill.id.desc()).all()
+    out = []
+    for b in rows:
+        points = db.query(BillLine).filter(BillLine.bill_id == b.id).with_entities(text('coalesce(sum(qty),0)')).scalar() or 0
+        out.append({
+            'id': b.id,
+            'customer_id': b.customer_id,
+            'bill_no': b.bill_no,
+            'status': b.status,
+            'payment_status': b.payment_status,
+            'shipping_status': b.shipping_status,
+            'total_amount': b.total_amount,
+            'currency': b.currency,
+            'created_at': b.created_at,
+            'archived_at': b.archived_at,
+            'goods_points': int(points),
+        })
+    return out
 
 
 @router.get('/bills/{bill_id}/lines')
@@ -932,7 +949,26 @@ def bill_lines(bill_id: int, db: Session = Depends(get_db), user=Depends(get_cur
         raise HTTPException(403, '没有权限')
 
     lines = db.query(BillLine).filter(BillLine.bill_id == bill_id).order_by(BillLine.id.asc()).all()
-    return lines
+    out = []
+    for bl in lines:
+      alloc = db.get(Allocation, bl.allocation_id)
+      order = db.get(CustomerOrder, alloc.order_line_id) if alloc else None
+      arrival_date = None
+      if alloc and alloc.allocated_by and ':' in alloc.allocated_by:
+          po_no = alloc.allocated_by.split(':', 1)[1]
+          po = db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first()
+          arrival_date = po.purchased_at if po else None
+      out.append({
+          'id': bl.id,
+          'jan_snapshot': bl.jan_snapshot,
+          'item_name_snapshot': bl.item_name_snapshot,
+          'qty': bl.qty,
+          'sale_unit_price': bl.sale_unit_price,
+          'line_amount': bl.line_amount,
+          'order_date': order.created_at if order else None,
+          'arrival_date': arrival_date,
+      })
+    return out
 
 
 @router.post("/bills/{bill_id}/state")

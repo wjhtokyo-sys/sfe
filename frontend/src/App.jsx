@@ -519,6 +519,8 @@ function MergeBillBox({ orderIds, authHeaders, reload }) {
 
 function AdminBills({ role, authHeaders, bills, customers, allocations, reload }) {
   const [c, setC] = useState(); const [ids, setIds] = useState(''); const [price, setPrice] = useState(1); const [bid, setBid] = useState(); const [act, setAct] = useState('pay');
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailRows, setDetailRows] = useState([]);
   const stageLabel = (b) => {
     if (b.status === 'archived') return '已归档';
     if (b.shipping_status === 'delivered') return '已收货';
@@ -527,7 +529,7 @@ function AdminBills({ role, authHeaders, bills, customers, allocations, reload }
     if (b.payment_status === 'paid') return '已支付';
     return '已创建';
   };
-  const activeBills = bills.filter(b => b.status !== 'archived').map(b => ({ ...b, customer_name: customers.find(cu => cu.id === b.customer_id)?.name || `客户${b.customer_id}` }));
+  const activeBills = bills.filter(b => b.status !== 'archived').map(b => ({ ...b, customer_name: customers.find(cu => cu.id === b.customer_id)?.name || `客户${b.customer_id}`, goods_points: 0 }));
   const actionOptions = role === 'customer'
     ? [{ label: '已支付', value: 'pay' }, { label: '已收货', value: 'deliver' }]
     : [{ label: '已创建', value: 'created' }, { label: '已支付', value: 'pay' }, { label: '已确认支付', value: 'confirm_receipt' }, { label: '已发货', value: 'ship' }, { label: '已收货', value: 'deliver' }, { label: '已归档', value: 'archive' }];
@@ -537,10 +539,24 @@ function AdminBills({ role, authHeaders, bills, customers, allocations, reload }
     <Space style={{ marginTop: 8 }}><Select placeholder='选择账单' style={{ width: 180 }} options={activeBills.map(b => ({ label: b.bill_no, value: b.id }))} onChange={setBid} /><Select style={{ width: 220 }} value={act} onChange={setAct} options={actionOptions} /><Button className='click-btn' onClick={async () => { try { await api.post(`/api/bills/${bid}/state`, { action: act }, authHeaders); message.success('状态更新成功'); reload(); } catch (e) { message.error(e?.response?.data?.detail || '状态更新失败'); } }}>状态推进</Button></Space>
     <Table rowKey='id' dataSource={activeBills} columns={[
       { title: '账单号', dataIndex: 'bill_no' },
+      { title: '账单日期', dataIndex: 'created_at', render: (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; } },
       ...(role === 'super_admin' ? [{ title: '客户名', dataIndex: 'customer_name' }] : []),
       { title: '金额', dataIndex: 'total_amount' },
+      { title: '商品点数', dataIndex: 'goods_points' },
       { title: '账单状态', render: (_, r) => stageLabel(r) },
+      { title: '操作', render: (_, r) => <Button className='click-btn' onClick={async () => { const res = await api.get(`/api/bills/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>账单详情</Button> },
     ]} style={{ marginTop: 8 }} />
+    <Modal open={detailOpen} title='账单详情' footer={null} onCancel={() => setDetailOpen(false)} width={900}>
+      <Table rowKey='id' pagination={false} dataSource={detailRows} columns={[
+        { title: 'JAN', dataIndex: 'jan_snapshot' },
+        { title: '品名', dataIndex: 'item_name_snapshot' },
+        { title: '数量', dataIndex: 'qty' },
+        { title: '出售单价', dataIndex: 'sale_unit_price' },
+        { title: '小计价格', dataIndex: 'line_amount' },
+        { title: '订货时间', dataIndex: 'order_date', render: (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; } },
+        { title: '到货时间', dataIndex: 'arrival_date', render: (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; } },
+      ]} />
+    </Modal>
   </Card>;
 }
 
