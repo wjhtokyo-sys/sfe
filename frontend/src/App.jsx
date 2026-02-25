@@ -70,7 +70,7 @@ export default function App() {
   </div>;
 
   const customerMenus = [{ key: 'items', label: '商品信息查询' }, { key: 'orders', label: '订单管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }];
-  const adminMenus = [{ key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: '客户订单管理' }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货未盘点' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }, { key: 'suppliers', label: '供应商管理' }, { key: 'customers', label: '客户管理' }];
+  const adminMenus = [{ key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: '客户订单管理' }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货未盘点' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }, { key: 'suppliers', label: '供应商管理' }, { key: 'customers', label: '客户管理' }, { key: 'db_ops', label: '数据库操作' }];
 
   const customerItemCols = [
     { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' },
@@ -114,6 +114,7 @@ export default function App() {
       {role !== 'customer' && menu === 'suppliers' && <SupplierPanel authHeaders={authHeaders} />}
 
       {role !== 'customer' && menu === 'customers' && <SuperCustomerPanel rows={data.superCustomers} authHeaders={authHeaders} reload={load} />}
+      {role !== 'customer' && menu === 'db_ops' && <DatabaseOpsPanel authHeaders={authHeaders} />}
 
       {role !== 'customer' && menu === 'items_admin' && <ItemAdminPanel items={data.items} kw={kw} setKw={setKw} load={load} authHeaders={authHeaders} />}
 
@@ -330,6 +331,59 @@ function FifoPendingPanel({ authHeaders }) {
       { title: '状态', dataIndex: 'status' },
       { title: '处理', render: (_, r) => <Space><Select style={{ width: 180 }} value={action} onChange={setAction} options={[{ label: '匹配订单后入库', value: 'inbound_to_order' }, { label: '转普通库存入库', value: 'inbound_stock' }, { label: '仅关闭任务', value: 'close_only' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/fifo/pending/${r.id}/resolve`, { action }, authHeaders); message.success('已处理'); load(); }}>执行</Button></Space> },
     ]} />
+  </Card>;
+}
+
+function DatabaseOpsPanel({ authHeaders }) {
+  const [tables, setTables] = useState([]);
+  const [tableName, setTableName] = useState();
+  const [columns, setColumns] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [jsonText, setJsonText] = useState('{}');
+  const [editRow, setEditRow] = useState(null);
+
+  const loadTables = async () => {
+    const r = await api.get('/api/db/tables', authHeaders);
+    setTables(r.data?.tables || []);
+  };
+  const loadRows = async (tb = tableName) => {
+    if (!tb) return;
+    const r = await api.get(`/api/db/table/${tb}?limit=200`, authHeaders);
+    setColumns(r.data?.columns || []);
+    setRows(r.data?.rows || []);
+  };
+
+  useEffect(() => { loadTables(); }, []);
+
+  return <Card className='panel' title='数据库操作'>
+    <Space wrap>
+      <Select placeholder='选择表' style={{ width: 220 }} value={tableName} options={tables.map(t => ({ label: t, value: t }))} onChange={(v) => { setTableName(v); loadRows(v); }} />
+      <Button className='click-btn' onClick={() => loadRows()}>读取表数据</Button>
+    </Space>
+
+    <Space style={{ marginTop: 8 }} align='start'>
+      <Input.TextArea value={jsonText} onChange={(e) => setJsonText(e.target.value)} rows={4} style={{ width: 420 }} placeholder='新增数据 JSON，如 {"name":"x"}' />
+      <Button className='click-btn' type='primary' onClick={async () => { try { const data = JSON.parse(jsonText || '{}'); await api.post(`/api/db/table/${tableName}`, { data }, authHeaders); message.success('添加成功'); loadRows(); } catch (e) { message.error(e?.response?.data?.detail || '添加失败'); } }}>添加</Button>
+    </Space>
+
+    <Table
+      style={{ marginTop: 8 }}
+      rowKey={(r) => r.id ?? JSON.stringify(r)}
+      dataSource={rows}
+      columns={[
+        ...columns.slice(0, 8).map(c => ({ title: c, dataIndex: c })),
+        { title: '操作', render: (_, r) => <Space>
+          <Button className='click-btn' onClick={() => { setEditRow(r); setJsonText(JSON.stringify(r, null, 2)); }}>修改</Button>
+          <Popconfirm title='确认删除该行？' onConfirm={async () => { try { await api.delete(`/api/db/table/${tableName}/${r.id}`, authHeaders); message.success('删除成功'); loadRows(); } catch (e) { message.error(e?.response?.data?.detail || '删除失败'); } }}>
+            <Button className='click-btn' danger>删除</Button>
+          </Popconfirm>
+        </Space> },
+      ]}
+    />
+
+    <Modal open={!!editRow} title='修改数据' onCancel={() => setEditRow(null)} onOk={async () => { try { const data = JSON.parse(jsonText || '{}'); await api.patch(`/api/db/table/${tableName}/${editRow.id}`, { data }, authHeaders); message.success('修改成功'); setEditRow(null); loadRows(); } catch (e) { message.error(e?.response?.data?.detail || '修改失败'); } }}>
+      <Input.TextArea value={jsonText} onChange={(e) => setJsonText(e.target.value)} rows={10} />
+    </Modal>
   </Card>;
 }
 

@@ -4,6 +4,7 @@ from io import BytesIO
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from openpyxl import Workbook, load_workbook
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_roles
@@ -656,3 +657,99 @@ def update_bill(bill_id: int, payload: dict, db: Session = Depends(get_db), _=De
 @router.post('/fifo/pending-legacy/{allocation_id}/resolve')
 def resolve_fifo_pending(allocation_id: int, decision: StateActionIn, _=Depends(require_roles('super_admin'))):
     return {'allocation_id': allocation_id, 'decision': decision.action, 'status': 'legacy_resolved'}
+
+
+@router.get('/db/tables')
+def db_tables(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    names = sorted([n for n in inspect(db.bind).get_table_names() if not n.startswith('sqlite_')])
+    return {'tables': names}
+
+
+@router.get('/db/table/{table_name}')
+def db_table_rows(table_name: str, limit: int = 100, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    inspector = inspect(db.bind)
+    tables = inspector.get_table_names()
+    if table_name not in tables:
+        raise HTTPException(404, '表不存在')
+    safe_limit = max(1, min(limit, 500))
+    rows = db.execute(text(f'SELECT * FROM "{table_name}" ORDER BY rowid DESC LIMIT :l'), {'l': safe_limit}).mappings().all()
+    cols = [c['name'] for c in inspector.get_columns(table_name)]
+    return {'columns': cols, 'rows': [dict(r) for r in rows]}
+
+
+@router.post('/db/table/{table_name}')
+def db_table_insert(table_name: str, payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    inspector = inspect(db.bind)
+    tables = inspector.get_table_names()
+    if table_name not in tables:
+        raise HTTPException(404, '表不存在')
+    data = payload.get('data') or {}
+    if not isinstance(data, dict) or not data:
+        raise HTTPException(400, 'data不能为空对象')
+
+    cols = [c['name'] for c in inspector.get_columns(table_name)]
+    pks = set(inspector.get_pk_constraint(table_name).get('constrained_columns') or [])
+    allowed = [k for k in data.keys() if k in cols and k not in pks]
+    if not allowed:
+        raise HTTPException(400, '没有可写入字段')
+
+    col_sql = ','.join([f'"{c}"' for c in allowed])
+    val_sql = ','.join([f':{c}' for c in allowed])
+    db.execute(text(f'INSERT INTO "{table_name}" ({col_sql}) VALUES ({val_sql})'), {c: data[c] for c in allowed})
+    db.commit()
+    return {'ok': True}
+
+
+@router.patch('/db/table/{table_name}/{row_id}')
+def db_table_update(table_name: str, row_id: int, payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    inspector = inspect(db.bind)
+    tables = inspector.get_table_names()
+    if table_name not in tables:
+        raise HTTPException(404, '表不存在')
+    data = payload.get('data') or {}
+    if not isinstance(data, dict) or not data:
+        raise HTTPException(400, 'data不能为空对象')
+
+    pk_cols = inspector.get_pk_constraint(table_name).get('constrained_columns') or []
+    if len(pk_cols) != 1:
+        raise HTTPException(400, '仅支持单主键表修改')
+    pk = pk_cols[0]
+    cols = [c['name'] for c in inspector.get_columns(table_name)]
+    allowed = [k for k in data.keys() if k in cols and k != pk]
+    if not allowed:
+        raise HTTPException(400, '没有可修改字段')
+
+    set_sql = ','.join([f'"{c}"=:{c}' for c in allowed])
+    params = {c: data[c] for c in allowed}
+    params['row_id'] = row_id
+    db.execute(text(f'UPDATE "{table_name}" SET {set_sql} WHERE "{pk}"=:row_id'), params)
+    db.commit()
+    return {'ok': True}
+
+
+@router.delete('/db/table/{table_name}/{row_id}')
+def db_table_delete(table_name: str, row_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    inspector = inspect(db.bind)
+    tables = inspector.get_table_names()
+    if table_name not in tables:
+        raise HTTPException(404, '表不存在')
+
+    pk_cols = inspector.get_pk_constraint(table_name).get('constrained_columns') or []
+    if len(pk_cols) != 1:
+        raise HTTPException(400, '仅支持单主键表删除')
+    pk = pk_cols[0]
+
+    for child in tables:
+        fks = inspector.get_foreign_keys(child)
+        for fk in fks:
+            if fk.get('referred_table') == table_name:
+                child_col = (fk.get('constrained_columns') or [None])[0]
+                parent_col = (fk.get('referred_columns') or [None])[0]
+                if child_col and parent_col == pk:
+                    cnt = db.execute(text(f'SELECT COUNT(1) c FROM "{child}" WHERE "{child_col}"=:v'), {'v': row_id}).scalar() or 0
+                    if cnt > 0:
+                        raise HTTPException(400, f'拒绝删除：存在关联数据 {child}({cnt})')
+
+    db.execute(text(f'DELETE FROM "{table_name}" WHERE "{pk}"=:row_id'), {'row_id': row_id})
+    db.commit()
+    return {'ok': True}
