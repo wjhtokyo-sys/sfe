@@ -599,35 +599,63 @@ def update_purchase_order_status(po_id: int, payload: dict, db: Session = Depend
                     ))
                 continue
 
-            next_rank = db.query(InventoryLot).filter(InventoryLot.item_id == item.id).count() + 1
-            lot = InventoryLot(item_id=item.id, qty_received=ln.qty, qty_remaining=ln.qty, fifo_rank=next_rank, location='PO_CHECKED')
-            db.add(lot)
-            db.flush()
-
-            remaining = lot.qty_remaining
+            total_need = 0
             for od in open_orders:
-                if remaining <= 0:
-                    break
                 need = (od.qty_requested or 0) - (od.qty_allocated or 0)
-                if need <= 0:
-                    continue
-                take = min(remaining, need)
-                alloc = Allocation(
-                    customer_id=od.customer_id,
-                    order_line_id=od.id,
-                    lot_id=lot.id,
-                    item_id=item.id,
-                    qty_allocated=take,
-                    fifo_rank_snapshot=lot.fifo_rank,
-                    status='active',
-                    allocated_by=f'purchase_checkin:{po.po_no}',
-                )
-                db.add(alloc)
-                od.qty_allocated = (od.qty_allocated or 0) + take
-                od.status = 'closed' if od.qty_allocated >= od.qty_requested else 'open'
-                remaining -= take
+                if need > 0:
+                    total_need += need
 
-            lot.qty_remaining = remaining
+            alloc_qty = min(ln.qty, total_need)
+            overflow_qty = max(0, ln.qty - alloc_qty)
+
+            if alloc_qty > 0:
+                next_rank = db.query(InventoryLot).filter(InventoryLot.item_id == item.id).count() + 1
+                lot = InventoryLot(item_id=item.id, qty_received=alloc_qty, qty_remaining=alloc_qty, fifo_rank=next_rank, location='PO_CHECKED')
+                db.add(lot)
+                db.flush()
+
+                remaining = lot.qty_remaining
+                for od in open_orders:
+                    if remaining <= 0:
+                        break
+                    need = (od.qty_requested or 0) - (od.qty_allocated or 0)
+                    if need <= 0:
+                        continue
+                    take = min(remaining, need)
+                    alloc = Allocation(
+                        customer_id=od.customer_id,
+                        order_line_id=od.id,
+                        lot_id=lot.id,
+                        item_id=item.id,
+                        qty_allocated=take,
+                        fifo_rank_snapshot=lot.fifo_rank,
+                        status='active',
+                        allocated_by=f'purchase_checkin:{po.po_no}',
+                    )
+                    db.add(alloc)
+                    od.qty_allocated = (od.qty_allocated or 0) + take
+                    od.status = 'closed' if od.qty_allocated >= od.qty_requested else 'open'
+                    remaining -= take
+
+                lot.qty_remaining = remaining
+
+            if overflow_qty > 0:
+                exists = db.query(FifoPendingTask).filter(
+                    FifoPendingTask.purchase_order_line_id == ln.id,
+                    FifoPendingTask.reason_code == 'no_order_match',
+                    FifoPendingTask.status == 'pending'
+                ).first()
+                if not exists:
+                    db.add(FifoPendingTask(
+                        purchase_order_line_id=ln.id,
+                        source_po_no=po.po_no,
+                        jan=ln.jan,
+                        item_name=ln.item_name_snapshot,
+                        qty=overflow_qty,
+                        reason_code='no_order_match',
+                        reason_text='单客户命中后超出订单剩余数量，超出部分需人工处理',
+                        status='pending',
+                    ))
 
         po.status = 'checked_inbound'
     else:
