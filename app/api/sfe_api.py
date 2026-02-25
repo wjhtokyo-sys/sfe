@@ -367,12 +367,14 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
     for ln, po in rows:
         item = db.query(Item).filter(Item.jan == ln.jan).first()
         customer_name = ''
+        alloc_qty = 0
         if item:
             allocs = db.query(Allocation).filter(Allocation.item_id == item.id, Allocation.allocated_by == f'purchase_checkin:{po.po_no}').all()
             if allocs:
                 cids = sorted({a.customer_id for a in allocs})
                 names = [db.get(Customer, cid).name for cid in cids if db.get(Customer, cid)]
                 customer_name = ' / '.join(names)
+                alloc_qty = int(sum(a.qty_allocated or 0 for a in allocs))
 
         out.append({
             'line_id': ln.id,
@@ -380,7 +382,7 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
             'purchased_at': po.purchased_at,
             'jan': ln.jan,
             'item_name': ln.item_name_snapshot,
-            'qty': ln.qty,
+            'qty': alloc_qty,
             'unit_cost': ln.unit_cost,
             'customer_name': customer_name,
         })
