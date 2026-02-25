@@ -135,8 +135,8 @@ export default function App() {
   const billCols = [{ title: '账单号', dataIndex: 'bill_no' }, { title: '金额', dataIndex: 'total_amount', render: (v) => fmtJPY(v) }, { title: '账单状态', dataIndex: 'status' }, { title: '付款状态', dataIndex: 'payment_status' }, { title: '物流状态', dataIndex: 'shipping_status' }];
 
   return <Layout style={{ minHeight: '100vh' }}>
-    <Sider style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <Sider>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
         <div style={{ color: '#fff', padding: 16 }}>
           <div>{role === 'customer' ? '客户管理页' : '超级管理员管理页'}</div>
           {role === 'customer' && <div style={{ marginTop: 6, color: '#ffd666', fontSize: 12 }}>当前登录中：{me?.customer_name || me?.username || '-'}</div>}
@@ -146,8 +146,10 @@ export default function App() {
           <Menu theme='dark' mode='inline' selectedKeys={[menu]} items={customerMenus} onClick={(e) => setMenu(e.key)} />
         ) : (
           <>
-            <Menu theme='dark' mode='inline' selectedKeys={[menu]} items={adminMenus} onClick={(e) => setMenu(e.key)} style={{ paddingBottom: 56 }} />
-            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0 }}>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <Menu theme='dark' mode='inline' selectedKeys={[menu]} items={adminMenus} onClick={(e) => setMenu(e.key)} />
+            </div>
+            <div style={{ borderTop: '1px solid rgba(255,255,255,0.12)' }}>
               <Menu theme='dark' mode='inline' selectedKeys={[menu]} items={adminBottomMenu} onClick={(e) => setMenu(e.key)} />
             </div>
           </>
