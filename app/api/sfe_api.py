@@ -465,11 +465,7 @@ def add_purchase_order_line(payload: dict, db: Session = Depends(get_db), _=Depe
     supplier_id = int(payload.get('supplier_id') or 0)
     supplier = db.get(Supplier, supplier_id) if supplier_id else None
     if not supplier:
-        supplier = db.query(Supplier).filter(Supplier.supplier_code == 'NOSUP').first()
-        if not supplier:
-            supplier = Supplier(supplier_code='NOSUP', name='未指定供应商', is_active=True)
-            db.add(supplier)
-            db.flush()
+        raise HTTPException(400, '供应商名必填')
 
     rows = payload.get('lines') if isinstance(payload.get('lines'), list) else [payload]
     parsed = []
