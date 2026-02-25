@@ -357,13 +357,17 @@ function PurchaseOrderPanel({ authHeaders }) {
         <Button className='click-btn' onClick={() => setLineRows([...lineRows, { jan: '', item_name: '', qty: undefined, unit_cost: undefined }])}>行+</Button>
         <Button className='click-btn' onClick={() => lineRows.length > 1 && setLineRows(lineRows.slice(0, -1))}>行-</Button>
         <Button className='click-btn' type='primary' onClick={async () => {
-          if (!manualSupplierId) { message.error('供应商名必填'); return; }
-          const hasEmpty = lineRows.some(r => !String(r.jan || '').trim() || !String(r.item_name || '').trim() || r.qty === undefined || r.qty === null || r.qty === '' || r.unit_cost === undefined || r.unit_cost === null || r.unit_cost === '');
-          if (hasEmpty) { message.error('供应商名、JAN、品名、数量、单价均为必填，不能有空项'); return; }
-          const res = await api.post('/api/purchase-orders/lines', { supplier_id: manualSupplierId, lines: lineRows }, authHeaders);
-          message.success(`手动添加成功：${res.data?.po_no || ''}（${res.data?.rows || 0}行）`);
-          setLineRows([{ jan: '', item_name: '', qty: undefined, unit_cost: undefined }]);
-          load();
+          try {
+            if (!manualSupplierId) { message.error('供应商名必填，不能添加'); return; }
+            const hasEmpty = lineRows.some(r => !String(r.jan || '').trim() || !String(r.item_name || '').trim() || r.qty === undefined || r.qty === null || r.qty === '' || r.unit_cost === undefined || r.unit_cost === null || r.unit_cost === '');
+            if (hasEmpty) { message.error('供应商名、JAN、品名、数量、单价均为必填，不能添加'); return; }
+            const res = await api.post('/api/purchase-orders/lines', { supplier_id: manualSupplierId, lines: lineRows }, authHeaders);
+            message.success(`手动添加成功：${res.data?.po_no || ''}（${res.data?.rows || 0}行）`);
+            setLineRows([{ jan: '', item_name: '', qty: undefined, unit_cost: undefined }]);
+            load();
+          } catch (e) {
+            message.error(e?.response?.data?.detail || '当前数据不完整，不能添加');
+          }
         }}>手动添加进货单</Button>
       </>}
     </div>)}
