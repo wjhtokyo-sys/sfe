@@ -1,5 +1,6 @@
 from datetime import datetime
 from io import BytesIO
+import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
@@ -14,6 +15,7 @@ from app.schemas.sfe import AllocateIn, BuildBillIn, CustomerIn, ItemIn, LotIn, 
 from app.services import sfe_service
 
 router = APIRouter(prefix="/api", tags=["SFE"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/customers")
@@ -438,8 +440,9 @@ def arrival_bill_candidates(customer_id: int, db: Session = Depends(get_db), _=D
 
 
 @router.post('/bills/from-arrival')
-def build_bill_from_arrival(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+def build_bill_from_arrival(payload: dict, db: Session = Depends(get_db), user=Depends(require_roles('super_admin'))):
     customer_id = int(payload.get('customer_id') or 0)
+    logger.info("AUDIT build_bill_from_arrival actor=%s role=%s customer_id=%s line_count=%s", user.username, user.role, customer_id, len(payload.get('lines') or []))
     lines = payload.get('lines') or []
     if not customer_id or not isinstance(lines, list) or not lines:
         raise HTTPException(400, '参数不完整')
@@ -1186,6 +1189,7 @@ def import_items_excel(file: UploadFile = File(...), db: Session = Depends(get_d
 def create_order(payload: OrderIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
     if user.role == 'customer' and user.customer_id != payload.customer_id:
         raise HTTPException(403, 'customer can only create own orders')
+    logger.info("AUDIT create_order actor=%s role=%s customer_id=%s item_id=%s qty=%s", user.username, user.role, payload.customer_id, payload.item_id, payload.qty_requested)
     return sfe_service.create_order(db, payload.customer_id, payload.item_id, payload.qty_requested)
 
 
@@ -1269,7 +1273,8 @@ def list_lots(db: Session = Depends(get_db), _=Depends(require_roles('admin', 's
 
 
 @router.post("/allocations/fifo")
-def allocate_fifo(payload: AllocateIn, db: Session = Depends(get_db), _=Depends(require_roles('admin', 'super_admin'))):
+def allocate_fifo(payload: AllocateIn, db: Session = Depends(get_db), user=Depends(require_roles('admin', 'super_admin'))):
+    logger.info("AUDIT allocate_fifo actor=%s role=%s order_line_id=%s allocated_by=%s", user.username, user.role, payload.order_line_id, payload.allocated_by)
     return sfe_service.allocate_fifo(db, payload.order_line_id, payload.allocated_by)
 
 
@@ -1279,7 +1284,8 @@ def list_allocations(db: Session = Depends(get_db), _=Depends(require_roles('adm
 
 
 @router.post("/bills")
-def build_bill(payload: BuildBillIn, db: Session = Depends(get_db), _=Depends(require_roles('admin', 'super_admin'))):
+def build_bill(payload: BuildBillIn, db: Session = Depends(get_db), user=Depends(require_roles('admin', 'super_admin'))):
+    logger.info("AUDIT build_bill actor=%s role=%s customer_id=%s alloc_count=%s sale_unit_price=%s", user.username, user.role, payload.customer_id, len(payload.allocation_ids or []), payload.sale_unit_price)
     return sfe_service.build_bill(db, payload.customer_id, payload.allocation_ids, payload.sale_unit_price)
 
 

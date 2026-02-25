@@ -1,4 +1,6 @@
 from datetime import datetime
+import logging
+import os
 from fastapi import HTTPException
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -20,6 +22,8 @@ BILL_STAGE_LABEL = {
     "received": "已收货",
     "archived": "已归档",
 }
+
+logger = logging.getLogger(__name__)
 
 
 def create_customer(db: Session, name: str):
@@ -147,6 +151,13 @@ def build_bill(db: Session, customer_id: int, allocation_ids: list[int], sale_un
     for a in allocations:
         if a.status != "active":
             raise HTTPException(400, f"allocation {a.id} is not active")
+
+    # 生产保护：拦截典型异常账单模式（sales_admin + 固定20单价）
+    env = os.getenv('SFE_ENV', '').strip().lower()
+    if env in {'prod', 'production'}:
+        if allocations and all((a.allocated_by or '') == 'sales_admin' for a in allocations) and float(sale_unit_price) == 20.0:
+            logger.warning("BLOCK suspicious bill pattern customer_id=%s allocation_ids=%s sale_unit_price=%s", customer_id, allocation_ids, sale_unit_price)
+            raise HTTPException(400, '检测到异常账单模式，已阻断。请使用到货一览账单生成流程。')
 
     bill_no = f"B{datetime.now().strftime('%Y%m%d%H%M%S')}"
     bill = Bill(customer_id=customer_id, bill_no=bill_no, status="issued")
