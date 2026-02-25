@@ -29,11 +29,12 @@ def admin_login(payload: LoginIn, db: Session = Depends(get_db)):
 
 @router.get('/me')
 def me(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    u = db.get(User, user.id)
     data = {
         'id': user.id,
         'username': user.username,
         'role': user.role,
-        'is_active': user.is_active,
+        'is_active': (u.is_active if u else True),
         'customer_id': user.customer_id,
     }
     if user.customer_id:
