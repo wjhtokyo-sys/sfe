@@ -688,6 +688,88 @@ def reset_purchase_orders_status(payload: dict, db: Session = Depends(get_db), _
     return {'ok': True, 'count': len(rows)}
 
 
+@router.post('/fifo/recompute')
+def recompute_fifo_pending(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    # 仅重算 FIFO 页面所需挂起视图，不改动其他业务页面数据
+    db.query(FifoPendingTask).filter(
+        FifoPendingTask.reason_code.in_(['multi_customer_match', 'no_order_match']),
+        FifoPendingTask.status == 'pending'
+    ).delete(synchronize_session=False)
+
+    pos = db.query(PurchaseOrder).filter(PurchaseOrder.status == 'checked_inbound').all()
+    created = 0
+
+    for po in pos:
+        lines = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po.id).all()
+        for ln in lines:
+            item = db.query(Item).filter(Item.jan == ln.jan).first()
+            if not item:
+                continue
+
+            allocs = db.query(Allocation).filter(
+                Allocation.item_id == item.id,
+                Allocation.allocated_by.in_([f'purchase_checkin:{po.po_no}', f'fifo_manual_match:{po.po_no}'])
+            ).all()
+            allocated_qty = int(sum(a.qty_allocated or 0 for a in allocs))
+            remain = int(ln.qty or 0) - allocated_qty
+            if remain <= 0:
+                continue
+
+            open_orders = db.query(CustomerOrder).filter(
+                CustomerOrder.jan_snapshot == ln.jan,
+                CustomerOrder.status == 'open'
+            ).order_by(CustomerOrder.created_at.asc(), CustomerOrder.id.asc()).all()
+            customer_ids = sorted({o.customer_id for o in open_orders})
+
+            if len(customer_ids) >= 2:
+                db.add(FifoPendingTask(
+                    purchase_order_line_id=ln.id,
+                    source_po_no=po.po_no,
+                    jan=ln.jan,
+                    item_name=ln.item_name_snapshot,
+                    qty=remain,
+                    reason_code='multi_customer_match',
+                    reason_text='JAN命中多个客户未完成订单，需人工干预',
+                    status='pending',
+                ))
+                created += 1
+                continue
+
+            if len(customer_ids) == 0:
+                db.add(FifoPendingTask(
+                    purchase_order_line_id=ln.id,
+                    source_po_no=po.po_no,
+                    jan=ln.jan,
+                    item_name=ln.item_name_snapshot,
+                    qty=remain,
+                    reason_code='no_order_match',
+                    reason_text='未命中客户订单，需人工处理',
+                    status='pending',
+                ))
+                created += 1
+                continue
+
+            # 单客户命中：仅超出订单剩余部分进入无匹配区
+            order = open_orders[0]
+            need = int((order.qty_requested or 0) - (order.qty_allocated or 0))
+            overflow = remain - max(0, need)
+            if overflow > 0:
+                db.add(FifoPendingTask(
+                    purchase_order_line_id=ln.id,
+                    source_po_no=po.po_no,
+                    jan=ln.jan,
+                    item_name=ln.item_name_snapshot,
+                    qty=overflow,
+                    reason_code='no_order_match',
+                    reason_text='单客户命中后超出订单剩余数量，超出部分需人工处理',
+                    status='pending',
+                ))
+                created += 1
+
+    db.commit()
+    return {'ok': True, 'created': created}
+
+
 @router.get('/fifo/pending')
 def list_fifo_pending(db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     tasks = db.query(FifoPendingTask).order_by(FifoPendingTask.id.desc()).all()

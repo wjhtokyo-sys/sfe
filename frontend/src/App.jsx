@@ -462,7 +462,15 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll 
   const [customerFilter, setCustomerFilter] = useState();
   const [multiPick, setMultiPick] = useState({});
   const [multiQty, setMultiQty] = useState({});
-  const load = async () => setRows(await api.get('/api/fifo/pending', authHeaders).then(r => r.data));
+  const load = async () => {
+    try {
+      await api.post('/api/fifo/recompute', {}, authHeaders);
+      const rows = await api.get('/api/fifo/pending', authHeaders).then(r => r.data);
+      setRows(rows || []);
+    } catch (e) {
+      message.error(e?.response?.data?.detail || 'FIFO重算失败');
+    }
+  };
   useEffect(() => { load(); }, []);
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
 
@@ -540,7 +548,7 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll 
   const multiRowsRaw = rows.filter(r => r.reason_code === 'multi_customer_match' && r.status === 'pending');
   const multiRows = !customerFilter ? multiRowsRaw : multiRowsRaw.filter(r => orders.some(o => o.customer_id === customerFilter && o.jan_snapshot === r.jan));
   const noMatchRows = rows.filter(r => r.reason_code === 'no_order_match' && r.status === 'pending');
-  return <Card className='panel' title='FIFO管理'>
+  return <Card className='panel' title='FIFO管理' extra={<Button className='click-btn' onClick={load}>刷新并重算</Button>}>
     <Card size='small' title='多客户命中分配管理'>
       <Space style={{ marginBottom: 8 }}>
         <Select allowClear placeholder='客户名' style={{ width: 220 }} value={customerFilter} options={customers.map(c => ({ label: c.name, value: c.id }))} onChange={setCustomerFilter} />
