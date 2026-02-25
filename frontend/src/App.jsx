@@ -478,14 +478,17 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll 
   const multiActionCol = {
     title: '操作',
     render: (_, r) => {
-      const options = orders
-        .filter(o => o.status === 'open' && String(o.jan_snapshot || '').trim() === String(r.jan || '').trim() && Number(o.qty_requested || 0) > Number(o.qty_allocated || 0))
-        .map(o => {
-          const customerName = customers.find(c => c.id === o.customer_id)?.name || `客户${o.customer_id}`;
-          const d = fmtDate(o.created_at);
-          const req = Number(o.qty_requested || 0);
-          return { label: `${customerName}+${d}下单${req}点`, value: o.id };
-        });
+      const options = [
+        ...orders
+          .filter(o => o.status === 'open' && String(o.jan_snapshot || '').trim() === String(r.jan || '').trim() && Number(o.qty_requested || 0) > Number(o.qty_allocated || 0))
+          .map(o => {
+            const customerName = customers.find(c => c.id === o.customer_id)?.name || `客户${o.customer_id}`;
+            const d = fmtDate(o.created_at);
+            const req = Number(o.qty_requested || 0);
+            return { label: `${customerName}+${d}下单${req}点`, value: `order:${o.id}` };
+          }),
+        { label: '移动到无匹配货品', value: 'move_to_no_match' },
+      ];
 
       return <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <Select
@@ -504,11 +507,17 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll 
             onChange={(v) => setMultiQty({ ...multiQty, [r.id]: v })}
           />
           <Button className='click-btn' type='primary' onClick={async () => {
-            const orderId = multiPick[r.id];
+            const pickVal = multiPick[r.id];
             const qty = Number(multiQty[r.id] || 0);
-            if (!orderId || !qty) { message.error('客户名与订单信息、数量必须同时填写'); return; }
+            if (!pickVal || !qty) { message.error('客户名与订单信息、数量必须同时填写'); return; }
             try {
-              await api.post(`/api/fifo/pending/${r.id}/match`, { order_id: orderId, qty }, authHeaders);
+              if (pickVal === 'move_to_no_match') {
+                await api.post(`/api/fifo/pending/${r.id}/match`, { action: 'move_to_no_match', qty }, authHeaders);
+              } else {
+                const orderId = Number(String(pickVal).split(':')[1] || 0);
+                if (!orderId) { message.error('请选择有效订单'); return; }
+                await api.post(`/api/fifo/pending/${r.id}/match`, { order_id: orderId, qty }, authHeaders);
+              }
               message.success('匹配成功');
               setMultiQty({ ...multiQty, [r.id]: undefined });
               load();

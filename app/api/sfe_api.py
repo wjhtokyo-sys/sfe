@@ -730,12 +730,47 @@ def match_fifo_pending_task(task_id: int, payload: dict, db: Session = Depends(g
     if task.reason_code != 'multi_customer_match':
         raise HTTPException(400, '仅多客户命中任务可使用匹配功能')
 
-    order_id = int(payload.get('order_id') or 0)
+    action = str(payload.get('action') or '').strip()
     qty = int(payload.get('qty') or 0)
-    if not order_id or qty <= 0:
-        raise HTTPException(400, '订单和数量为必填项')
+    if qty <= 0:
+        raise HTTPException(400, '数量为必填项')
     if qty > (task.qty or 0):
         raise HTTPException(400, '匹配数量不能超过挂起剩余数量')
+
+    if action == 'move_to_no_match':
+        target = db.query(FifoPendingTask).filter(
+            FifoPendingTask.purchase_order_line_id == task.purchase_order_line_id,
+            FifoPendingTask.reason_code == 'no_order_match',
+            FifoPendingTask.status == 'pending'
+        ).first()
+        if target:
+            target.qty = int(target.qty or 0) + qty
+        else:
+            target = FifoPendingTask(
+                purchase_order_line_id=task.purchase_order_line_id,
+                source_po_no=task.source_po_no,
+                jan=task.jan,
+                item_name=task.item_name,
+                qty=qty,
+                reason_code='no_order_match',
+                reason_text='由多客户命中人工转移至无匹配货品管理',
+                status='pending',
+            )
+            db.add(target)
+
+        task.qty = int(task.qty or 0) - qty
+        if task.qty <= 0:
+            task.qty = 0
+            task.status = 'resolved'
+            task.resolution_note = 'moved_to_no_match'
+            task.resolved_by = 'super_admin'
+            task.resolved_at = datetime.now()
+        db.commit()
+        return {'ok': True, 'task_qty_left': task.qty, 'moved_qty': qty}
+
+    order_id = int(payload.get('order_id') or 0)
+    if not order_id:
+        raise HTTPException(400, '订单为必填项')
 
     order = db.get(CustomerOrder, order_id)
     if not order:
