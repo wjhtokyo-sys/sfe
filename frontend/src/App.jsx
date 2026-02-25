@@ -63,6 +63,28 @@ export default function App() {
     if (role === 'customer') setMenu('items');
   }, [token, role]);
 
+  // 全局双击预防：所有 click-btn 按钮点击后短暂锁定，防止重复提交
+  useEffect(() => {
+    const onClickCapture = (evt) => {
+      const btn = evt.target?.closest?.('button.click-btn');
+      if (!btn) return;
+      if (btn.disabled || btn.dataset.locked === '1') {
+        evt.preventDefault();
+        evt.stopPropagation();
+        return;
+      }
+      btn.dataset.locked = '1';
+      const oldPointer = btn.style.pointerEvents;
+      btn.style.pointerEvents = 'none';
+      setTimeout(() => {
+        btn.dataset.locked = '0';
+        btn.style.pointerEvents = oldPointer || '';
+      }, 800);
+    };
+    document.addEventListener('click', onClickCapture, true);
+    return () => document.removeEventListener('click', onClickCapture, true);
+  }, []);
+
   if (!token) return <div className='page'>
     <Title level={3}>SFE 登录入口</Title>
     <Card title='客户登录入口页' className='login-wrap'><Form onFinish={(v) => login('/auth/customer-login', v)}><Form.Item name='username' rules={[{ required: true }]}><Input placeholder='客户账号' /></Form.Item><Form.Item name='password' rules={[{ required: true }]}><Input.Password placeholder='密码' /></Form.Item><Button className='click-btn' htmlType='submit' type='primary'>客户登录</Button></Form></Card>
