@@ -252,7 +252,23 @@ function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
       <Input placeholder='商品名' value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} />
       <InputNumber min={0} placeholder='建议价' value={newItem.msrp_price} onChange={(v) => setNewItem({ ...newItem, msrp_price: v ?? undefined })} />
       <InputNumber min={1} placeholder='入数' value={newItem.in_qty} onChange={(v) => setNewItem({ ...newItem, in_qty: v ?? undefined })} />
-      <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/items', newItem, authHeaders); message.success('手动新增商品成功'); setNewItem({ jan: '', brand: '', name: '', spec: '', msrp_price: undefined, in_qty: undefined, is_active: true }); load(); }}>手动新增商品</Button>
+      <Button className='click-btn' type='primary' onClick={async () => {
+        const missing = [];
+        if (!String(newItem.jan || '').trim()) missing.push('JAN');
+        if (!String(newItem.brand || '').trim()) missing.push('品牌');
+        if (!String(newItem.name || '').trim()) missing.push('商品名');
+        if (newItem.msrp_price === undefined || newItem.msrp_price === null || newItem.msrp_price === '') missing.push('建议价');
+        if (newItem.in_qty === undefined || newItem.in_qty === null || newItem.in_qty === '') missing.push('入数');
+        if (missing.length) { message.error(`以下为必填项，不能提交：${missing.join('、')}`); return; }
+        try {
+          await api.post('/api/items', newItem, authHeaders);
+          message.success('手动新增商品成功');
+          setNewItem({ jan: '', brand: '', name: '', spec: '', msrp_price: undefined, in_qty: undefined, is_active: true });
+          load();
+        } catch (e) {
+          message.error(e?.response?.data?.detail || '提交失败');
+        }
+      }}>手动新增商品</Button>
     </Space>
     <Table rowKey='id' dataSource={items} columns={cols} style={{ marginTop: 8 }} />
     <Modal open={!!edit} title='修改商品信息' onCancel={() => setEdit(null)} onOk={async () => { await api.patch(`/api/items/${edit.id}`, edit, authHeaders); message.success('修改成功'); setEdit(null); load(); }}>
