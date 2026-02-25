@@ -186,7 +186,7 @@ export default function App() {
 
       {role !== 'customer' && menu === 'arrival_unchecked' && <ArrivalOverviewPanel authHeaders={authHeaders} />}
 
-      {role !== 'customer' && menu === 'fifo' && <FifoPendingPanel authHeaders={authHeaders} customers={data.customers} orders={data.orders} />}
+      {role !== 'customer' && menu === 'fifo' && <FifoPendingPanel authHeaders={authHeaders} customers={data.customers} orders={data.orders} reloadAll={load} />}
 
     </Content></Layout>
   </Layout>;
@@ -457,21 +457,75 @@ function PurchaseOrderPanel({ authHeaders }) {
   </Card>;
 }
 
-function FifoPendingPanel({ authHeaders, customers = [], orders = [] }) {
+function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll }) {
   const [rows, setRows] = useState([]); const [action, setAction] = useState('inbound_to_order');
   const [customerFilter, setCustomerFilter] = useState();
+  const [multiPick, setMultiPick] = useState({});
+  const [multiQty, setMultiQty] = useState({});
   const load = async () => setRows(await api.get('/api/fifo/pending', authHeaders).then(r => r.data));
   useEffect(() => { load(); }, []);
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
-  const commonCols = [
+
+  const baseCols = [
     { title: '进货单号', dataIndex: 'source_po_no' },
     { title: '进货日期', dataIndex: 'purchased_at', render: fmtDate },
     { title: 'JAN', dataIndex: 'jan' },
     { title: '品名', dataIndex: 'item_name' },
     { title: '数量', dataIndex: 'qty' },
     { title: '进货价格', dataIndex: 'unit_cost', render: (v) => fmtJPY(v) },
-    { title: '操作', render: (_, r) => <Space><Select style={{ width: 180 }} value={action} onChange={setAction} options={[{ label: '匹配订单后入库', value: 'inbound_to_order' }, { label: '转普通库存入库', value: 'inbound_stock' }, { label: '仅关闭任务', value: 'close_only' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/fifo/pending/${r.id}/resolve`, { action }, authHeaders); message.success('已处理'); load(); }}>执行</Button><Popconfirm title='确认删除该挂起记录？' onConfirm={async () => { await api.delete(`/api/fifo/pending/${r.id}`, authHeaders); message.success('删除成功'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
   ];
+
+  const multiActionCol = {
+    title: '操作',
+    render: (_, r) => {
+      const options = orders
+        .filter(o => o.status === 'open' && String(o.jan_snapshot || '').trim() === String(r.jan || '').trim() && Number(o.qty_requested || 0) > Number(o.qty_allocated || 0))
+        .map(o => {
+          const customerName = customers.find(c => c.id === o.customer_id)?.name || `客户${o.customer_id}`;
+          const d = fmtDate(o.created_at);
+          const req = Number(o.qty_requested || 0);
+          return { label: `${customerName}+${d}下单${req}点`, value: o.id };
+        });
+
+      return <Space>
+        <Select
+          placeholder='客户名与订单信息'
+          style={{ width: 300 }}
+          value={multiPick[r.id]}
+          options={options}
+          onChange={(v) => setMultiPick({ ...multiPick, [r.id]: v })}
+        />
+        <InputNumber
+          min={1}
+          placeholder='数量'
+          style={{ width: 120 }}
+          value={multiQty[r.id]}
+          onChange={(v) => setMultiQty({ ...multiQty, [r.id]: v })}
+        />
+        <Button className='click-btn' type='primary' onClick={async () => {
+          const orderId = multiPick[r.id];
+          const qty = Number(multiQty[r.id] || 0);
+          if (!orderId || !qty) { message.error('客户名与订单信息、数量必须同时填写'); return; }
+          try {
+            await api.post(`/api/fifo/pending/${r.id}/match`, { order_id: orderId, qty }, authHeaders);
+            message.success('匹配成功');
+            setMultiQty({ ...multiQty, [r.id]: undefined });
+            load();
+            reloadAll?.();
+          } catch (e) {
+            message.error(e?.response?.data?.detail || '匹配失败');
+          }
+        }}>匹配</Button>
+        <Popconfirm title='确认删除该挂起记录？' onConfirm={async () => { await api.delete(`/api/fifo/pending/${r.id}`, authHeaders); message.success('删除成功'); load(); reloadAll?.(); }}><Button className='click-btn' danger>删除</Button></Popconfirm>
+      </Space>;
+    },
+  };
+
+  const noMatchActionCol = {
+    title: '操作',
+    render: (_, r) => <Space><Select style={{ width: 180 }} value={action} onChange={setAction} options={[{ label: '匹配订单后入库', value: 'inbound_to_order' }, { label: '转普通库存入库', value: 'inbound_stock' }, { label: '仅关闭任务', value: 'close_only' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/fifo/pending/${r.id}/resolve`, { action }, authHeaders); message.success('已处理'); load(); reloadAll?.(); }}>执行</Button><Popconfirm title='确认删除该挂起记录？' onConfirm={async () => { await api.delete(`/api/fifo/pending/${r.id}`, authHeaders); message.success('删除成功'); load(); reloadAll?.(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space>,
+  };
+
   const multiRowsRaw = rows.filter(r => r.reason_code === 'multi_customer_match' && r.status === 'pending');
   const multiRows = !customerFilter ? multiRowsRaw : multiRowsRaw.filter(r => orders.some(o => o.customer_id === customerFilter && o.jan_snapshot === r.jan));
   const noMatchRows = rows.filter(r => r.reason_code === 'no_order_match' && r.status === 'pending');
@@ -480,10 +534,10 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [] }) {
       <Space style={{ marginBottom: 8 }}>
         <Select allowClear placeholder='客户名' style={{ width: 220 }} value={customerFilter} options={customers.map(c => ({ label: c.name, value: c.id }))} onChange={setCustomerFilter} />
       </Space>
-      <Table rowKey='id' dataSource={multiRows} columns={commonCols} />
+      <Table rowKey='id' dataSource={multiRows} columns={[...baseCols, multiActionCol]} />
     </Card>
     <Card size='small' title='无匹配货品管理' style={{ marginTop: 8 }}>
-      <Table rowKey='id' dataSource={noMatchRows} columns={commonCols} />
+      <Table rowKey='id' dataSource={noMatchRows} columns={[...baseCols, noMatchActionCol]} />
     </Card>
   </Card>;
 }
