@@ -112,9 +112,8 @@ export default function App() {
     { key: 'history', label: '历史账单' },
     { key: 'suppliers', label: '供应商管理' },
     { key: 'customers', label: '账号管理' },
-    // 数据库操作固定放在左侧菜单最下方
-    { key: 'db_ops', label: '数据库操作' },
   ];
+  const adminBottomMenu = [{ key: 'db_ops', label: '数据库操作' }];
 
   const customerItemCols = [
     { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price', render: (v) => fmtJPY(v) }, { title: '入数', dataIndex: 'in_qty' },
@@ -137,11 +136,22 @@ export default function App() {
 
   return <Layout style={{ minHeight: '100vh' }}>
     <Sider>
-      <div style={{ color: '#fff', padding: 16 }}>
-        <div>{role === 'customer' ? '客户管理页' : '超级管理员管理页'}</div>
-        {role === 'customer' && <div style={{ marginTop: 6, color: '#ffd666', fontSize: 12 }}>当前登录中：{me?.customer_name || me?.username || '-'}</div>}
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ color: '#fff', padding: 16 }}>
+          <div>{role === 'customer' ? '客户管理页' : '超级管理员管理页'}</div>
+          {role === 'customer' && <div style={{ marginTop: 6, color: '#ffd666', fontSize: 12 }}>当前登录中：{me?.customer_name || me?.username || '-'}</div>}
+        </div>
+
+        {role === 'customer' ? (
+          <Menu theme='dark' mode='inline' selectedKeys={[menu]} items={customerMenus} onClick={(e) => setMenu(e.key)} />
+        ) : (
+          <>
+            <Menu theme='dark' mode='inline' selectedKeys={[menu]} items={adminMenus} onClick={(e) => setMenu(e.key)} />
+            <div style={{ flex: 1 }} />
+            <Menu theme='dark' mode='inline' selectedKeys={[menu]} items={adminBottomMenu} onClick={(e) => setMenu(e.key)} />
+          </>
+        )}
       </div>
-      <Menu theme='dark' mode='inline' selectedKeys={[menu]} items={role === 'customer' ? customerMenus : adminMenus} onClick={(e) => setMenu(e.key)} />
     </Sider>
     <Layout><Content className='page'>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
