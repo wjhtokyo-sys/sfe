@@ -23,7 +23,7 @@ export default function App() {
   const [fifoLot, setFifoLot] = useState({ item_id: undefined, qty_received: 1 });
   const [fifoOrderId, setFifoOrderId] = useState();
   const [orderCustomerFilter, setOrderCustomerFilter] = useState();
-  const [orderArrivalStatusFilter, setOrderArrivalStatusFilter] = useState();
+  const [orderArrivalStatusFilter, setOrderArrivalStatusFilter] = useState('all');
   const [orderArrivalOpen, setOrderArrivalOpen] = useState(false);
   const [orderArrivalRows, setOrderArrivalRows] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -110,7 +110,7 @@ export default function App() {
 
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
   const matchArrivalStatus = (o) => {
-    if (!orderArrivalStatusFilter) return true;
+    if (!orderArrivalStatusFilter || orderArrivalStatusFilter === 'all') return true;
     const req = Number(o.qty_requested || 0);
     const arr = Number(o.qty_allocated || 0);
     if (orderArrivalStatusFilter === 'none') return arr === 0;
@@ -156,7 +156,7 @@ export default function App() {
             placeholder='订单到货状态'
             style={{ width: 220 }}
             value={orderArrivalStatusFilter}
-            options={[{ label: '未到货', value: 'none' }, { label: '部分到货', value: 'partial' }, { label: '已全到货', value: 'full' }]}
+            options={[{ label: '全部订单', value: 'all' }, { label: '未到货', value: 'none' }, { label: '部分到货', value: 'partial' }, { label: '已全到货', value: 'full' }]}
             onChange={setOrderArrivalStatusFilter}
           />
         </Space>
