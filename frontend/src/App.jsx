@@ -495,13 +495,16 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll 
           options={options}
           onChange={(v) => setMultiPick({ ...multiPick, [r.id]: v })}
         />
-        <InputNumber
-          min={1}
-          placeholder='数量'
-          style={{ width: 120 }}
-          value={multiQty[r.id]}
-          onChange={(v) => setMultiQty({ ...multiQty, [r.id]: v })}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ height: 6 }} />
+          <InputNumber
+            min={1}
+            placeholder='数量'
+            style={{ width: 120 }}
+            value={multiQty[r.id]}
+            onChange={(v) => setMultiQty({ ...multiQty, [r.id]: v })}
+          />
+        </div>
         <Button className='click-btn' type='primary' onClick={async () => {
           const orderId = multiPick[r.id];
           const qty = Number(multiQty[r.id] || 0);
