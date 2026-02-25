@@ -708,7 +708,11 @@ def recompute_fifo_pending(db: Session = Depends(get_db), _=Depends(require_role
 
             allocs = db.query(Allocation).filter(
                 Allocation.item_id == item.id,
-                Allocation.allocated_by.in_([f'purchase_checkin:{po.po_no}', f'fifo_manual_match:{po.po_no}'])
+                Allocation.allocated_by.in_([
+                    f'purchase_checkin:{po.po_no}',
+                    f'fifo_manual_match:{po.po_no}',
+                    f'fifo_recompute_auto:{po.po_no}',
+                ])
             ).all()
             allocated_qty = int(sum(a.qty_allocated or 0 for a in allocs))
             remain = int(ln.qty or 0) - allocated_qty
@@ -749,19 +753,46 @@ def recompute_fifo_pending(db: Session = Depends(get_db), _=Depends(require_role
                 created += 1
                 continue
 
-            # 单客户命中：仅超出订单剩余部分进入无匹配区
-            order = open_orders[0]
-            need = int((order.qty_requested or 0) - (order.qty_allocated or 0))
-            overflow = remain - max(0, need)
-            if overflow > 0:
+            # 单客户命中：重算时自动匹配该JAN的open订单，剩余再进入无匹配区
+            for order in open_orders:
+                if remain <= 0:
+                    break
+                need = int((order.qty_requested or 0) - (order.qty_allocated or 0))
+                if need <= 0:
+                    continue
+                give = min(remain, need)
+                if give <= 0:
+                    continue
+
+                next_rank = db.query(InventoryLot).filter(InventoryLot.item_id == item.id).count() + 1
+                lot = InventoryLot(item_id=item.id, qty_received=give, qty_remaining=0, fifo_rank=next_rank, location='FIFO_RECOMPUTE_AUTO')
+                db.add(lot)
+                db.flush()
+
+                db.add(Allocation(
+                    customer_id=order.customer_id,
+                    order_line_id=order.id,
+                    lot_id=lot.id,
+                    item_id=item.id,
+                    qty_allocated=give,
+                    fifo_rank_snapshot=lot.fifo_rank,
+                    status='active',
+                    allocated_by=f'fifo_recompute_auto:{po.po_no}',
+                ))
+
+                order.qty_allocated = int(order.qty_allocated or 0) + give
+                order.status = 'closed' if int(order.qty_allocated or 0) >= int(order.qty_requested or 0) else 'open'
+                remain -= give
+
+            if remain > 0:
                 db.add(FifoPendingTask(
                     purchase_order_line_id=ln.id,
                     source_po_no=po.po_no,
                     jan=ln.jan,
                     item_name=ln.item_name_snapshot,
-                    qty=overflow,
+                    qty=remain,
                     reason_code='no_order_match',
-                    reason_text='单客户命中后超出订单剩余数量，超出部分需人工处理',
+                    reason_text='单客户命中自动匹配后仍有剩余，需人工处理',
                     status='pending',
                 ))
                 created += 1
