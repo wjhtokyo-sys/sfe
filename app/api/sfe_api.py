@@ -366,8 +366,6 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
     out = []
     for ln, po in rows:
         item = db.query(Item).filter(Item.jan == ln.jan).first()
-        customer_name = ''
-        alloc_qty = 0
         if item:
             valid_prefixes = ('purchase_checkin:', 'fifo_manual_match:', 'fifo_recompute_auto:', 'fifo_no_match_assign:')
             allocs_all = db.query(Allocation).filter(Allocation.item_id == item.id, Allocation.allocated_by.isnot(None)).all()
@@ -377,10 +375,22 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
                 and str(a.allocated_by or '').endswith(f':{po.po_no}')
             ]
             if allocs:
-                cids = sorted({a.customer_id for a in allocs})
-                names = [db.get(Customer, cid).name for cid in cids if db.get(Customer, cid)]
-                customer_name = ' / '.join(names)
-                alloc_qty = int(sum(a.qty_allocated or 0 for a in allocs))
+                by_customer = {}
+                for a in allocs:
+                    by_customer[a.customer_id] = int(by_customer.get(a.customer_id, 0)) + int(a.qty_allocated or 0)
+                for cid, cqty in by_customer.items():
+                    c = db.get(Customer, cid)
+                    out.append({
+                        'line_id': ln.id,
+                        'po_no': po.po_no,
+                        'purchased_at': po.purchased_at,
+                        'jan': ln.jan,
+                        'item_name': ln.item_name_snapshot,
+                        'qty': cqty,
+                        'unit_cost': ln.unit_cost,
+                        'customer_name': c.name if c else '',
+                    })
+                continue
 
         out.append({
             'line_id': ln.id,
@@ -388,9 +398,9 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
             'purchased_at': po.purchased_at,
             'jan': ln.jan,
             'item_name': ln.item_name_snapshot,
-            'qty': alloc_qty,
+            'qty': 0,
             'unit_cost': ln.unit_cost,
-            'customer_name': customer_name,
+            'customer_name': '',
         })
     return out
 
