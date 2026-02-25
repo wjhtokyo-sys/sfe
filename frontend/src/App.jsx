@@ -726,7 +726,7 @@ function MergeBillBox({ orderIds, authHeaders, reload }) {
 }
 
 function AdminBills({ role, authHeaders, bills, customers, allocations, reload }) {
-  const [c, setC] = useState(); const [ids, setIds] = useState(''); const [price, setPrice] = useState(1); const [bid, setBid] = useState(); const [act, setAct] = useState('pay');
+  const [bid, setBid] = useState(); const [act, setAct] = useState('pay');
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRows, setDetailRows] = useState([]);
   const stageLabel = (b) => {
@@ -743,7 +743,6 @@ function AdminBills({ role, authHeaders, bills, customers, allocations, reload }
     : [{ label: '已创建', value: 'created' }, { label: '已支付', value: 'pay' }, { label: '已确认支付', value: 'confirm_receipt' }, { label: '已发货', value: 'ship' }, { label: '已收货', value: 'deliver' }, { label: '已归档', value: 'archive' }];
 
   return <Card className='panel' title='账单管理'>
-    {role === 'super_admin' && <Space><Select placeholder='客户' style={{ width: 180 }} options={customers.map(x => ({ label: x.name, value: x.id }))} onChange={setC} /><Input placeholder='分配ID 例 1,2' style={{ width: 220 }} value={ids} onChange={(e) => setIds(e.target.value)} /><InputNumber min={1} value={price} onChange={(v) => setPrice(v || 1)} /><Button className='click-btn' onClick={async () => { await api.post('/api/bills', { customer_id: c, allocation_ids: ids.split(',').map(s => Number(s.trim())).filter(Boolean), sale_unit_price: price }, authHeaders); message.success('账单生成成功'); reload(); }}>生成账单</Button></Space>}
     <Space style={{ marginTop: 8 }}><Select placeholder='选择账单' style={{ width: 180 }} options={activeBills.map(b => ({ label: b.bill_no, value: b.id }))} onChange={setBid} /><Select style={{ width: 220 }} value={act} onChange={setAct} options={actionOptions} /><Button className='click-btn' onClick={async () => { try { await api.post(`/api/bills/${bid}/state`, { action: act }, authHeaders); message.success('状态更新成功'); reload(); } catch (e) { message.error(e?.response?.data?.detail || '状态更新失败'); } }}>状态推进</Button></Space>
     <Table rowKey='id' dataSource={activeBills} columns={[
       { title: '账单号', dataIndex: 'bill_no' },
