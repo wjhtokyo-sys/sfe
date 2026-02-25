@@ -345,14 +345,65 @@ function FifoPendingPanel({ authHeaders }) {
 
 function ArrivalOverviewPanel({ authHeaders }) {
   const [rows, setRows] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [customerId, setCustomerId] = useState();
+  const [billRows, setBillRows] = useState([]);
+  const [pickedIds, setPickedIds] = useState([]);
+  const [saleMap, setSaleMap] = useState({});
+
   const load = async () => {
-    const data = await api.get('/api/arrival-overview', authHeaders).then(r => r.data);
-    setRows(data || []);
+    const [arr, cs] = await Promise.all([
+      api.get('/api/arrival-overview', authHeaders).then(r => r.data),
+      api.get('/api/customers', authHeaders).then(r => r.data),
+    ]);
+    setRows(arr || []);
+    setCustomers(cs || []);
   };
+  const loadBillRows = async (cid) => {
+    if (!cid) { setBillRows([]); setPickedIds([]); setSaleMap({}); return; }
+    const data = await api.get(`/api/arrival-bill-candidates?customer_id=${cid}`, authHeaders).then(r => r.data);
+    setBillRows(data || []);
+    setPickedIds([]);
+    setSaleMap({});
+  };
+
   useEffect(() => { load(); }, []);
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
+
+  const selectedRows = billRows.filter(r => pickedIds.includes(r.allocation_id));
+  const purchaseTotal = selectedRows.reduce((s, r) => s + (Number(r.purchase_unit_price || 0) * Number(r.qty || 0)), 0);
+  const salesTotal = selectedRows.reduce((s, r) => s + (Number(saleMap[r.allocation_id] || 0) * Number(r.qty || 0)), 0);
+
   return <Card className='panel' title='到货一览'>
-    <Table rowKey={(r) => r.line_id ?? `${r.po_no}-${r.jan}`} dataSource={rows} columns={[
+    <Card size='small' title='账单生成表'>
+      <Space wrap style={{ marginBottom: 8 }}>
+        <Select placeholder='客户名' style={{ width: 220 }} value={customerId} options={customers.map(c => ({ label: c.name, value: c.id }))} onChange={(v) => { setCustomerId(v); loadBillRows(v); }} />
+        <span>账单进货价合计：{purchaseTotal.toFixed(2)}</span>
+        <span>账单销售价合计：{salesTotal.toFixed(2)}</span>
+        <Button className='click-btn' type='primary' disabled={!customerId || !pickedIds.length} onClick={async () => {
+          const lines = pickedIds.map(id => ({ allocation_id: id, sale_unit_price: Number(saleMap[id] || 0) }));
+          if (lines.some(x => !x.sale_unit_price || x.sale_unit_price <= 0)) { message.error('请填写所选行的销售价格'); return; }
+          try {
+            const res = await api.post('/api/bills/from-arrival', { customer_id: customerId, lines }, authHeaders);
+            message.success(`生成账单成功：${res.data?.bill_no || ''}`);
+            loadBillRows(customerId);
+          } catch (e) {
+            message.error(e?.response?.data?.detail || '生成账单失败');
+          }
+        }}>生成账单</Button>
+      </Space>
+      <Table rowKey='allocation_id' rowSelection={{ selectedRowKeys: pickedIds, onChange: (keys) => setPickedIds(keys) }} dataSource={billRows} columns={[
+        { title: '进货日期', dataIndex: 'purchased_at', render: fmtDate },
+        { title: 'JAN', dataIndex: 'jan' },
+        { title: '品名', dataIndex: 'item_name' },
+        { title: '数量', dataIndex: 'qty' },
+        { title: '订货日期', dataIndex: 'order_date', render: fmtDate },
+        { title: '采购价格', dataIndex: 'purchase_unit_price' },
+        { title: '操作', render: (_, r) => <InputNumber min={0} placeholder='销售价格' value={saleMap[r.allocation_id]} onChange={(v) => setSaleMap({ ...saleMap, [r.allocation_id]: v || 0 })} /> },
+      ]} />
+    </Card>
+
+    <Table style={{ marginTop: 8 }} rowKey={(r) => r.line_id ?? `${r.po_no}-${r.jan}`} dataSource={rows} columns={[
       { title: '进货单号', dataIndex: 'po_no' },
       { title: '进货日期', dataIndex: 'purchased_at', render: fmtDate },
       { title: 'JAN', dataIndex: 'jan' },

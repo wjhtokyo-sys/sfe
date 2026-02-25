@@ -296,6 +296,77 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
     return out
 
 
+@router.get('/arrival-bill-candidates')
+def arrival_bill_candidates(customer_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    allocs = (
+        db.query(Allocation)
+        .filter(Allocation.customer_id == customer_id, Allocation.status == 'active', Allocation.allocated_by.like('purchase_checkin:%'))
+        .order_by(Allocation.id.desc())
+        .all()
+    )
+    out = []
+    for a in allocs:
+        order = db.get(CustomerOrder, a.order_line_id)
+        item = db.get(Item, a.item_id)
+        po_no = (a.allocated_by or '').split(':', 1)[1] if ':' in (a.allocated_by or '') else ''
+        po = db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first() if po_no else None
+        pol = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po.id, PurchaseOrderLine.jan == (item.jan if item else '')).first() if po else None
+        out.append({
+            'allocation_id': a.id,
+            'po_no': po_no,
+            'purchased_at': po.purchased_at if po else None,
+            'jan': item.jan if item else (order.jan_snapshot if order else ''),
+            'item_name': item.name if item else (order.item_name_snapshot if order else ''),
+            'qty': a.qty_allocated,
+            'purchase_unit_price': pol.unit_cost if pol else 0,
+            'order_date': order.created_at if order else None,
+        })
+    return out
+
+
+@router.post('/bills/from-arrival')
+def build_bill_from_arrival(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    customer_id = int(payload.get('customer_id') or 0)
+    lines = payload.get('lines') or []
+    if not customer_id or not isinstance(lines, list) or not lines:
+        raise HTTPException(400, '参数不完整')
+
+    alloc_ids = [int(x.get('allocation_id')) for x in lines if x.get('allocation_id')]
+    allocs = db.query(Allocation).filter(Allocation.id.in_(alloc_ids), Allocation.customer_id == customer_id, Allocation.status == 'active').all()
+    if len(allocs) != len(alloc_ids):
+        raise HTTPException(400, '存在不可用分配记录')
+
+    bill_no = f"B{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    bill = Bill(customer_id=customer_id, bill_no=bill_no, status='issued')
+    db.add(bill)
+    db.flush()
+
+    total = 0.0
+    price_map = {int(x['allocation_id']): float(x.get('sale_unit_price') or 0) for x in lines if x.get('allocation_id')}
+    for a in allocs:
+        order = db.get(CustomerOrder, a.order_line_id)
+        price = price_map.get(a.id, 0)
+        if price <= 0:
+            raise HTTPException(400, '销售价格必须大于0')
+        line_amount = a.qty_allocated * price
+        total += line_amount
+        db.add(BillLine(
+            bill_id=bill.id,
+            allocation_id=a.id,
+            item_id=a.item_id,
+            jan_snapshot=order.jan_snapshot if order else '',
+            item_name_snapshot=order.item_name_snapshot if order else '',
+            qty=a.qty_allocated,
+            sale_unit_price=price,
+            line_amount=line_amount,
+        ))
+        a.status = 'billed'
+
+    bill.total_amount = total
+    db.commit()
+    return {'ok': True, 'bill_no': bill_no, 'total_amount': total}
+
+
 @router.post('/purchase-orders/lines')
 def add_purchase_order_line(payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
     supplier_id = int(payload.get('supplier_id') or 0)
