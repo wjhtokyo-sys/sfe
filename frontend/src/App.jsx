@@ -602,7 +602,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
   const [billRows, setBillRows] = useState([]);
   const [pickedIds, setPickedIds] = useState([]);
   const [saleMap, setSaleMap] = useState({});
-  const [billArrivalStatusFilter, setBillArrivalStatusFilter] = useState();
+  // 账单生成表默认展示已选客户的全部到货，不再做订单到货状态下拉过滤
 
   const load = async () => {
     const [arr, cs] = await Promise.all([
@@ -623,16 +623,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
   useEffect(() => { load(); }, []);
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
 
-  const matchBillArrivalStatus = (r) => {
-    if (!billArrivalStatusFilter) return true;
-    const req = Number(r.order_qty_requested || 0);
-    const arr = Number(r.order_qty_allocated || 0);
-    if (billArrivalStatusFilter === 'none') return arr === 0;
-    if (billArrivalStatusFilter === 'partial') return arr > 0 && arr < req;
-    if (billArrivalStatusFilter === 'full') return req > 0 && arr >= req;
-    return true;
-  };
-  const filteredBillRows = billRows.filter(matchBillArrivalStatus);
+  const filteredBillRows = billRows;
   const selectedRows = filteredBillRows.filter(r => pickedIds.includes(r.allocation_id));
   const purchaseTotal = selectedRows.reduce((s, r) => s + (Number(r.purchase_unit_price || 0) * Number(r.qty || 0)), 0);
   const salesTotal = selectedRows.reduce((s, r) => s + (Number(saleMap[r.allocation_id] || 0) * Number(r.qty || 0)), 0);
@@ -641,7 +632,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
     <Card size='small' title='账单生成表'>
       <Space wrap style={{ marginBottom: 8 }}>
         <Select placeholder='客户名' style={{ width: 220 }} value={customerId} options={customers.map(c => ({ label: c.name, value: c.id }))} onChange={(v) => { setCustomerId(v); loadBillRows(v); }} />
-        <Select allowClear placeholder='订单到货状态' style={{ width: 220 }} value={billArrivalStatusFilter} options={[{ label: '未到货', value: 'none' }, { label: '部分到货', value: 'partial' }, { label: '已全到货', value: 'full' }]} onChange={setBillArrivalStatusFilter} />
+        {/* 已移除“订单到货状态”下拉，直接显示所选客户全部到货 */}
         <span>账单进货价合计：{fmtJPY(purchaseTotal)}</span>
         <span>账单销售价合计：{fmtJPY(salesTotal)}</span>
         <Button className='click-btn' type='primary' disabled={!customerId || !pickedIds.length} onClick={async () => {
