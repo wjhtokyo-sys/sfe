@@ -394,16 +394,7 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
                     })
                 continue
 
-        out.append({
-            'line_id': ln.id,
-            'po_no': po.po_no,
-            'purchased_at': po.purchased_at,
-            'jan': ln.jan,
-            'item_name': ln.item_name_snapshot,
-            'qty': 0,
-            'unit_cost': ln.unit_cost,
-            'customer_name': '',
-        })
+        # 未分配到客户的到货不在到货一览下表展示（统一在FIFO管理页处理）
     return out
 
 
