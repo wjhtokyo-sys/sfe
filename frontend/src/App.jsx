@@ -17,6 +17,8 @@ export default function App() {
   const [fifoLot, setFifoLot] = useState({ item_id: undefined, qty_received: 1 });
   const [fifoOrderId, setFifoOrderId] = useState();
   const [orderCustomerFilter, setOrderCustomerFilter] = useState();
+  const [orderArrivalOpen, setOrderArrivalOpen] = useState(false);
+  const [orderArrivalRows, setOrderArrivalRows] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
 
   const authHeaders = useMemo(() => ({ headers: { Authorization: `Bearer ${token}` } }), [token]);
@@ -99,7 +101,8 @@ export default function App() {
     { title: '操作', render: (_, row) => <CustomerOrderBtn row={row} me={me} authHeaders={authHeaders} reload={load} /> },
   ];
 
-  const orderCols = [{ title: '订单ID', dataIndex: 'id' }, { title: role === 'super_admin' ? '客户名' : '客户ID', dataIndex: 'customer_id', render: (v) => role === 'super_admin' ? (data.customers.find(c => c.id === v)?.name || `客户${v}`) : v }, { title: 'JAN', dataIndex: 'jan_snapshot' }, { title: '商品', dataIndex: 'item_name_snapshot' }, { title: '订货', dataIndex: 'qty_requested' }, { title: '已到货', dataIndex: 'qty_allocated' }, ...(role === 'super_admin' ? [{ title: '订货时间', dataIndex: 'created_at', render: (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; } }] : []), { title: '操作', render: (_, r) => <Popconfirm title='确认删除该订单？' onConfirm={async () => { await api.delete(`/api/orders/${r.id}`, authHeaders); message.success('订单已删除'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm> }];
+  const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
+  const orderCols = [{ title: '订单ID', dataIndex: 'id' }, { title: role === 'super_admin' ? '客户名' : '订货时间', dataIndex: role === 'super_admin' ? 'customer_id' : 'created_at', render: (v, r) => role === 'super_admin' ? (data.customers.find(c => c.id === v)?.name || `客户${v}`) : fmtDate(r.created_at) }, { title: 'JAN', dataIndex: 'jan_snapshot' }, { title: '商品', dataIndex: 'item_name_snapshot' }, { title: '订货', dataIndex: 'qty_requested' }, { title: '已到货', dataIndex: 'qty_allocated', render: (v, r) => (v && Number(v) !== 0) ? <Button type='link' className='click-btn' onClick={async () => { const res = await api.get(`/api/orders/${r.id}/arrivals`, authHeaders); setOrderArrivalRows(res.data || []); setOrderArrivalOpen(true); }}>{v}</Button> : v }, ...(role === 'super_admin' ? [{ title: '订货时间', dataIndex: 'created_at', render: (v) => fmtDate(v) }] : []), { title: '操作', render: (_, r) => <Popconfirm title='确认删除该订单？' onConfirm={async () => { await api.delete(`/api/orders/${r.id}`, authHeaders); message.success('订单已删除'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm> }];
 
   const billCols = [{ title: '账单号', dataIndex: 'bill_no' }, { title: '金额', dataIndex: 'total_amount' }, { title: '账单状态', dataIndex: 'status' }, { title: '付款状态', dataIndex: 'payment_status' }, { title: '物流状态', dataIndex: 'shipping_status' }];
 
@@ -134,6 +137,14 @@ export default function App() {
           />
         </Space>}
         <Table rowKey='id' dataSource={(role === 'super_admin' ? data.orders.filter(o => o.status === 'open') : data.orders).filter(o => !orderCustomerFilter || o.customer_id === orderCustomerFilter)} columns={orderCols} />
+        <Modal open={orderArrivalOpen} title='到货记录' footer={null} onCancel={() => setOrderArrivalOpen(false)} width={760}>
+          <Table rowKey={(r, i) => `${r.jan}-${i}`} pagination={false} dataSource={orderArrivalRows} columns={[
+            { title: '到货时间', dataIndex: 'arrival_time', render: (v) => fmtDate(v) },
+            { title: 'JAN', dataIndex: 'jan' },
+            { title: '品名', dataIndex: 'item_name' },
+            { title: '数量', dataIndex: 'qty' },
+          ]} />
+        </Modal>
       </Card>}
 
       {menu === 'bills' && <AdminBills role={role} authHeaders={authHeaders} bills={data.bills} customers={data.customers} allocations={data.allocations} reload={load} />}

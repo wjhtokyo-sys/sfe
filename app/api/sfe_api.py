@@ -911,6 +911,35 @@ def delete_order(order_id: int, db: Session = Depends(get_db), user=Depends(get_
     return {'ok': True}
 
 
+@router.get('/orders/{order_id}/arrivals')
+def order_arrivals(order_id: int, db: Session = Depends(get_db), user=Depends(get_current_user)):
+    order = db.get(CustomerOrder, order_id)
+    if not order:
+        raise HTTPException(404, '订单不存在')
+    if user.role == 'customer' and user.customer_id != order.customer_id:
+        raise HTTPException(403, '没有权限')
+
+    allocs = db.query(Allocation).filter(Allocation.order_line_id == order_id).order_by(Allocation.id.asc()).all()
+    out = []
+    for a in allocs:
+        item = db.get(Item, a.item_id)
+        arrival_time = None
+        if a.allocated_by and ':' in a.allocated_by:
+            po_no = a.allocated_by.split(':', 1)[1]
+            po = db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first()
+            arrival_time = po.purchased_at if po else None
+        if arrival_time is None:
+            lot = db.get(InventoryLot, a.lot_id)
+            arrival_time = lot.created_at if lot else None
+        out.append({
+            'arrival_time': arrival_time,
+            'jan': item.jan if item else order.jan_snapshot,
+            'item_name': item.name if item else order.item_name_snapshot,
+            'qty': a.qty_allocated,
+        })
+    return out
+
+
 @router.post('/bills/from-orders')
 def build_bill_from_orders(payload: dict, db: Session = Depends(get_db), user=Depends(require_roles('super_admin'))):
     return sfe_service.build_bill_from_orders(db, payload.get('order_ids', []), user.role, float(payload.get('sale_unit_price', 1)))
