@@ -906,6 +906,73 @@ def match_fifo_pending_task(task_id: int, payload: dict, db: Session = Depends(g
     return {'ok': True, 'task_qty_left': task.qty, 'order_qty_allocated': order.qty_allocated}
 
 
+@router.post('/fifo/pending/{task_id}/assign-customer')
+def assign_no_match_to_customer(task_id: int, payload: dict, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    task = db.get(FifoPendingTask, task_id)
+    if not task:
+        raise HTTPException(404, '挂起任务不存在')
+    if task.status != 'pending':
+        raise HTTPException(400, '该任务不是待处理状态')
+    if task.reason_code != 'no_order_match':
+        raise HTTPException(400, '仅无匹配货品任务可分配客户')
+
+    customer_id = int(payload.get('customer_id') or 0)
+    qty = int(payload.get('qty') or 0)
+    if not customer_id or qty <= 0:
+        raise HTTPException(400, '客户名和数量为必填项')
+    if qty > int(task.qty or 0):
+        raise HTTPException(400, '匹配数量不能超过挂起剩余数量')
+
+    customer = db.get(Customer, customer_id)
+    if not customer or not customer.is_active:
+        raise HTTPException(400, '客户不存在或已禁用')
+
+    item = db.query(Item).filter(Item.jan == task.jan).first()
+    if not item:
+        item = Item(jan=task.jan, brand='-', name=task.item_name or task.jan, spec=None, msrp_price=0, in_qty=1, is_active=True)
+        db.add(item)
+        db.flush()
+
+    order = CustomerOrder(
+        customer_id=customer_id,
+        item_id=item.id,
+        jan_snapshot=item.jan,
+        item_name_snapshot=item.name,
+        qty_requested=qty,
+        qty_allocated=qty,
+        status='closed',
+    )
+    db.add(order)
+    db.flush()
+
+    next_rank = db.query(InventoryLot).filter(InventoryLot.item_id == item.id).count() + 1
+    lot = InventoryLot(item_id=item.id, qty_received=qty, qty_remaining=0, fifo_rank=next_rank, location='FIFO_NO_MATCH_ASSIGN')
+    db.add(lot)
+    db.flush()
+
+    db.add(Allocation(
+        customer_id=customer_id,
+        order_line_id=order.id,
+        lot_id=lot.id,
+        item_id=item.id,
+        qty_allocated=qty,
+        fifo_rank_snapshot=lot.fifo_rank,
+        status='active',
+        allocated_by=f'fifo_no_match_assign:{task.source_po_no}',
+    ))
+
+    task.qty = int(task.qty or 0) - qty
+    if task.qty <= 0:
+        task.qty = 0
+        task.status = 'resolved'
+        task.resolution_note = f'assigned_customer:{customer_id}'
+        task.resolved_by = 'super_admin'
+        task.resolved_at = datetime.now()
+
+    db.commit()
+    return {'ok': True, 'task_qty_left': task.qty, 'customer_id': customer_id, 'qty': qty}
+
+
 @router.post('/fifo/pending/{task_id}/resolve')
 def resolve_fifo_pending_task(task_id: int, payload: dict, db: Session = Depends(get_db), user=Depends(require_roles('super_admin'))):
     task = db.get(FifoPendingTask, task_id)

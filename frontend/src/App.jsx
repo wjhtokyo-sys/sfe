@@ -458,10 +458,12 @@ function PurchaseOrderPanel({ authHeaders }) {
 }
 
 function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll }) {
-  const [rows, setRows] = useState([]); const [action, setAction] = useState('inbound_to_order');
+  const [rows, setRows] = useState([]);
   const [customerFilter, setCustomerFilter] = useState();
   const [multiPick, setMultiPick] = useState({});
   const [multiQty, setMultiQty] = useState({});
+  const [noMatchCustomer, setNoMatchCustomer] = useState({});
+  const [noMatchQty, setNoMatchQty] = useState({});
   const load = async () => {
     try {
       await api.post('/api/fifo/recompute', {}, authHeaders);
@@ -542,7 +544,39 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll 
 
   const noMatchActionCol = {
     title: '操作',
-    render: (_, r) => <Space><Select style={{ width: 180 }} value={action} onChange={setAction} options={[{ label: '匹配订单后入库', value: 'inbound_to_order' }, { label: '转普通库存入库', value: 'inbound_stock' }, { label: '仅关闭任务', value: 'close_only' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/fifo/pending/${r.id}/resolve`, { action }, authHeaders); message.success('已处理'); load(); reloadAll?.(); }}>执行</Button><Popconfirm title='确认删除该挂起记录？' onConfirm={async () => { await api.delete(`/api/fifo/pending/${r.id}`, authHeaders); message.success('删除成功'); load(); reloadAll?.(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space>,
+    render: (_, r) => <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <Select
+        placeholder='客户名'
+        style={{ width: 220 }}
+        value={noMatchCustomer[r.id]}
+        options={customers.filter(c => c.is_active !== false).map(c => ({ label: c.name, value: c.id }))}
+        onChange={(v) => setNoMatchCustomer({ ...noMatchCustomer, [r.id]: v })}
+      />
+      <Space>
+        <InputNumber
+          min={1}
+          placeholder='数量'
+          style={{ width: 120 }}
+          value={noMatchQty[r.id]}
+          onChange={(v) => setNoMatchQty({ ...noMatchQty, [r.id]: v })}
+        />
+        <Button className='click-btn' type='primary' onClick={async () => {
+          const customerId = Number(noMatchCustomer[r.id] || 0);
+          const qty = Number(noMatchQty[r.id] || 0);
+          if (!customerId || !qty) { message.error('客户名和数量必须同时填写'); return; }
+          try {
+            await api.post(`/api/fifo/pending/${r.id}/assign-customer`, { customer_id: customerId, qty }, authHeaders);
+            message.success('匹配成功');
+            setNoMatchQty({ ...noMatchQty, [r.id]: undefined });
+            load();
+            reloadAll?.();
+          } catch (e) {
+            message.error(e?.response?.data?.detail || '匹配失败');
+          }
+        }}>匹配</Button>
+        <Popconfirm title='确认删除该挂起记录？' onConfirm={async () => { await api.delete(`/api/fifo/pending/${r.id}`, authHeaders); message.success('删除成功'); load(); reloadAll?.(); }}><Button className='click-btn' danger>删除</Button></Popconfirm>
+      </Space>
+    </div>,
   };
 
   const multiRowsRaw = rows.filter(r => r.reason_code === 'multi_customer_match' && r.status === 'pending');
