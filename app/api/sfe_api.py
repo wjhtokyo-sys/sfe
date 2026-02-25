@@ -369,7 +369,13 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
         customer_name = ''
         alloc_qty = 0
         if item:
-            allocs = db.query(Allocation).filter(Allocation.item_id == item.id, Allocation.allocated_by == f'purchase_checkin:{po.po_no}').all()
+            valid_prefixes = ('purchase_checkin:', 'fifo_manual_match:', 'fifo_recompute_auto:', 'fifo_no_match_assign:')
+            allocs_all = db.query(Allocation).filter(Allocation.item_id == item.id, Allocation.allocated_by.isnot(None)).all()
+            allocs = [
+                a for a in allocs_all
+                if str(a.allocated_by or '').startswith(valid_prefixes)
+                and str(a.allocated_by or '').endswith(f':{po.po_no}')
+            ]
             if allocs:
                 cids = sorted({a.customer_id for a in allocs})
                 names = [db.get(Customer, cid).name for cid in cids if db.get(Customer, cid)]
@@ -391,12 +397,14 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
 
 @router.get('/arrival-bill-candidates')
 def arrival_bill_candidates(customer_id: int, db: Session = Depends(get_db), _=Depends(require_roles('super_admin'))):
+    valid_prefixes = ('purchase_checkin:', 'fifo_manual_match:', 'fifo_recompute_auto:', 'fifo_no_match_assign:')
     allocs = (
         db.query(Allocation)
-        .filter(Allocation.customer_id == customer_id, Allocation.status == 'active', Allocation.allocated_by.like('purchase_checkin:%'))
+        .filter(Allocation.customer_id == customer_id, Allocation.status == 'active')
         .order_by(Allocation.id.desc())
         .all()
     )
+    allocs = [a for a in allocs if str(a.allocated_by or '').startswith(valid_prefixes)]
     out = []
     for a in allocs:
         order = db.get(CustomerOrder, a.order_line_id)
