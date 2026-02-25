@@ -459,7 +459,7 @@ function PurchaseOrderPanel({ authHeaders }) {
 
 function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll }) {
   const [rows, setRows] = useState([]);
-  const [customerFilter, setCustomerFilter] = useState();
+  // 多客户命中区域已移除客户名下拉过滤
   const [multiPick, setMultiPick] = useState({});
   const [multiQty, setMultiQty] = useState({});
   const [noMatchCustomer, setNoMatchCustomer] = useState({});
@@ -579,14 +579,10 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [], reloadAll 
     </div>,
   };
 
-  const multiRowsRaw = rows.filter(r => r.reason_code === 'multi_customer_match' && r.status === 'pending');
-  const multiRows = !customerFilter ? multiRowsRaw : multiRowsRaw.filter(r => orders.some(o => o.customer_id === customerFilter && o.jan_snapshot === r.jan));
+  const multiRows = rows.filter(r => r.reason_code === 'multi_customer_match' && r.status === 'pending');
   const noMatchRows = rows.filter(r => r.reason_code === 'no_order_match' && r.status === 'pending');
   return <Card className='panel' title='FIFO管理' extra={<Button className='click-btn' onClick={load}>刷新并重算</Button>}>
     <Card size='small' title='多客户命中分配管理'>
-      <Space style={{ marginBottom: 8 }}>
-        <Select allowClear placeholder='客户名' style={{ width: 220 }} value={customerFilter} options={customers.map(c => ({ label: c.name, value: c.id }))} onChange={setCustomerFilter} />
-      </Space>
       <Table rowKey='id' dataSource={multiRows} columns={[...baseCols, multiActionCol]} />
     </Card>
     <Card size='small' title='无匹配货品管理' style={{ marginTop: 8 }}>
