@@ -730,6 +730,7 @@ def recompute_fifo_pending(db: Session = Depends(get_db), _=Depends(require_role
                     f'purchase_checkin:{po.po_no}',
                     f'fifo_manual_match:{po.po_no}',
                     f'fifo_recompute_auto:{po.po_no}',
+                    f'fifo_no_match_assign:{po.po_no}',
                 ])
             ).all()
             allocated_qty = int(sum(a.qty_allocated or 0 for a in allocs))
