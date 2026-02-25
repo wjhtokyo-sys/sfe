@@ -15,3 +15,12 @@
 
 - 系统新增业务时间默认与本地系统时间同步（`datetime.now`）。
 - 适用范围：通用 `created_at` 默认时间、账单状态推进时间、归档时间等新增写入时间。
+
+## 测试与生产隔离配置
+
+- 默认业务库：`sfe.db`
+- 当满足以下任一条件时自动切到测试库 `sfe_test.db`：
+  - 运行 pytest（检测 `PYTEST_CURRENT_TEST`）
+  - 环境变量 `SFE_ENV=test`
+- 若检测到 `SFE_ENV=prod` 且运行 pytest，系统将拒绝启动并报错，防止测试污染生产数据。
+- 可通过 `SFE_DB_URL` 显式指定数据库连接（优先级最高）。

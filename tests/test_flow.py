@@ -1,6 +1,11 @@
+import os
+
 from fastapi.testclient import TestClient
 from main import app
 from seed import run as seed_run
+
+if os.getenv('SFE_ENV', '').strip().lower() in {'prod', 'production'}:
+    raise RuntimeError('tests/test_flow.py 禁止在生产环境执行')
 
 client = TestClient(app)
 
