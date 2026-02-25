@@ -5,6 +5,12 @@ import { api } from './api/client';
 
 const { Sider, Content } = Layout;
 const { Title } = Typography;
+const jpyFmt = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
+const fmtJPY = (v) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '-';
+  return jpyFmt.format(n);
+};
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
@@ -97,14 +103,14 @@ export default function App() {
   const adminMenus = [{ key: 'items_admin', label: '商品信息管理' }, { key: 'orders', label: '客户订单管理' }, { key: 'purchase_orders', label: '进货单管理' }, { key: 'arrival_unchecked', label: '到货一览' }, { key: 'fifo', label: 'FIFO管理' }, { key: 'bills', label: '账单管理' }, { key: 'history', label: '历史账单' }, { key: 'suppliers', label: '供应商管理' }, { key: 'customers', label: '账号管理' }, { key: 'db_ops', label: '数据库操作' }];
 
   const customerItemCols = [
-    { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' },
+    { title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price', render: (v) => fmtJPY(v) }, { title: '入数', dataIndex: 'in_qty' },
     { title: '操作', render: (_, row) => <CustomerOrderBtn row={row} me={me} authHeaders={authHeaders} reload={load} /> },
   ];
 
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
   const orderCols = [{ title: '订单ID', dataIndex: 'id' }, { title: role === 'super_admin' ? '客户名' : '订货时间', dataIndex: role === 'super_admin' ? 'customer_id' : 'created_at', render: (v, r) => role === 'super_admin' ? (data.customers.find(c => c.id === v)?.name || `客户${v}`) : fmtDate(r.created_at) }, { title: 'JAN', dataIndex: 'jan_snapshot' }, { title: '商品', dataIndex: 'item_name_snapshot' }, { title: '订货', dataIndex: 'qty_requested' }, { title: '已到货', dataIndex: 'qty_allocated', render: (v, r) => (v && Number(v) !== 0) ? <Button type='link' className='click-btn' onClick={async () => { const res = await api.get(`/api/orders/${r.id}/arrivals`, authHeaders); setOrderArrivalRows(res.data || []); setOrderArrivalOpen(true); }}>{v}</Button> : v }, ...(role === 'super_admin' ? [{ title: '订货时间', dataIndex: 'created_at', render: (v) => fmtDate(v) }] : []), { title: '操作', render: (_, r) => <Popconfirm title='确认删除该订单？' onConfirm={async () => { await api.delete(`/api/orders/${r.id}`, authHeaders); message.success('订单已删除'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm> }];
 
-  const billCols = [{ title: '账单号', dataIndex: 'bill_no' }, { title: '金额', dataIndex: 'total_amount' }, { title: '账单状态', dataIndex: 'status' }, { title: '付款状态', dataIndex: 'payment_status' }, { title: '物流状态', dataIndex: 'shipping_status' }];
+  const billCols = [{ title: '账单号', dataIndex: 'bill_no' }, { title: '金额', dataIndex: 'total_amount', render: (v) => fmtJPY(v) }, { title: '账单状态', dataIndex: 'status' }, { title: '付款状态', dataIndex: 'payment_status' }, { title: '物流状态', dataIndex: 'shipping_status' }];
 
   return <Layout style={{ minHeight: '100vh' }}>
     <Sider>
@@ -244,7 +250,7 @@ function AccountManagePage({ customerRows, customers, adminUsers, authHeaders, r
 function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
   const [edit, setEdit] = useState(null);
   const [newItem, setNewItem] = useState({ jan: '', brand: '', name: '', spec: '', msrp_price: undefined, in_qty: undefined, is_active: true });
-  const cols = [{ title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price' }, { title: '入数', dataIndex: 'in_qty' }, { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => setEdit(r)}>修改</Button><Popconfirm title='确认删除该商品？' onConfirm={async () => { await api.delete(`/api/items/${r.id}`, authHeaders); message.success('删除成功'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> }];
+  const cols = [{ title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price', render: (v) => fmtJPY(v) }, { title: '入数', dataIndex: 'in_qty' }, { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => setEdit(r)}>修改</Button><Popconfirm title='确认删除该商品？' onConfirm={async () => { await api.delete(`/api/items/${r.id}`, authHeaders); message.success('删除成功'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> }];
   return <Card className='panel' title='商品信息管理'>
     <Space wrap>
       <Input placeholder='按JAN或关键字检索' value={kw} onChange={(e) => setKw(e.target.value)} />
@@ -409,7 +415,7 @@ function PurchaseOrderPanel({ authHeaders }) {
       { title: '进货单号', dataIndex: 'po_no' },
       { title: '进货时间', dataIndex: 'purchased_at', render: fmtDate },
       { title: '供应商名', dataIndex: 'supplier_id', render: (v) => suppliers.find(s => s.id === v)?.name || `供应商${v}` },
-      { title: '合计进货价格', dataIndex: 'total_cost' },
+      { title: '合计进货价格', dataIndex: 'total_cost', render: (v) => fmtJPY(v) },
       { title: '付款状态', dataIndex: 'payment_status', render: payTag },
       { title: '盘点状态', dataIndex: 'status', render: statusTag },
       {
@@ -426,7 +432,7 @@ function PurchaseOrderPanel({ authHeaders }) {
         { title: 'JAN', dataIndex: 'jan' },
         { title: '品名', dataIndex: 'item_name_snapshot' },
         { title: '数量', dataIndex: 'qty' },
-        { title: '进货价', dataIndex: 'unit_cost' },
+        { title: '进货价', dataIndex: 'unit_cost', render: (v) => fmtJPY(v) },
       ]} />
     </Modal>
   </Card>;
@@ -444,7 +450,7 @@ function FifoPendingPanel({ authHeaders, customers = [], orders = [] }) {
     { title: 'JAN', dataIndex: 'jan' },
     { title: '品名', dataIndex: 'item_name' },
     { title: '数量', dataIndex: 'qty' },
-    { title: '进货价格', dataIndex: 'unit_cost' },
+    { title: '进货价格', dataIndex: 'unit_cost', render: (v) => fmtJPY(v) },
     { title: '操作', render: (_, r) => <Space><Select style={{ width: 180 }} value={action} onChange={setAction} options={[{ label: '匹配订单后入库', value: 'inbound_to_order' }, { label: '转普通库存入库', value: 'inbound_stock' }, { label: '仅关闭任务', value: 'close_only' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/fifo/pending/${r.id}/resolve`, { action }, authHeaders); message.success('已处理'); load(); }}>执行</Button><Popconfirm title='确认删除该挂起记录？' onConfirm={async () => { await api.delete(`/api/fifo/pending/${r.id}`, authHeaders); message.success('删除成功'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
   ];
   const multiRowsRaw = rows.filter(r => r.reason_code === 'multi_customer_match' && r.status === 'pending');
@@ -498,8 +504,8 @@ function ArrivalOverviewPanel({ authHeaders }) {
     <Card size='small' title='账单生成表'>
       <Space wrap style={{ marginBottom: 8 }}>
         <Select placeholder='客户名' style={{ width: 220 }} value={customerId} options={customers.map(c => ({ label: c.name, value: c.id }))} onChange={(v) => { setCustomerId(v); loadBillRows(v); }} />
-        <span>账单进货价合计：{purchaseTotal.toFixed(2)}</span>
-        <span>账单销售价合计：{salesTotal.toFixed(2)}</span>
+        <span>账单进货价合计：{fmtJPY(purchaseTotal)}</span>
+        <span>账单销售价合计：{fmtJPY(salesTotal)}</span>
         <Button className='click-btn' type='primary' disabled={!customerId || !pickedIds.length} onClick={async () => {
           const lines = pickedIds.map(id => ({ allocation_id: id, sale_unit_price: Number(saleMap[id] || 0) }));
           if (lines.some(x => !x.sale_unit_price || x.sale_unit_price <= 0)) { message.error('请填写所选行的销售价格'); return; }
@@ -518,7 +524,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
         { title: '品名', dataIndex: 'item_name' },
         { title: '数量', dataIndex: 'qty' },
         { title: '订货日期', dataIndex: 'order_date', render: fmtDate },
-        { title: '采购价格', dataIndex: 'purchase_unit_price' },
+        { title: '采购价格', dataIndex: 'purchase_unit_price', render: (v) => fmtJPY(v) },
         { title: '操作', render: (_, r) => <InputNumber min={0} placeholder='销售价格' value={saleMap[r.allocation_id]} onChange={(v) => setSaleMap({ ...saleMap, [r.allocation_id]: v || 0 })} /> },
       ]} />
     </Card>
@@ -530,7 +536,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
       { title: '品名', dataIndex: 'item_name' },
       { title: '客户名', dataIndex: 'customer_name' },
       { title: '数量', dataIndex: 'qty' },
-      { title: '采购单价', dataIndex: 'unit_cost' },
+      { title: '采购单价', dataIndex: 'unit_cost', render: (v) => fmtJPY(v) },
       { title: '操作', render: (_, r) => <Popconfirm title='确认删除该到货明细？' onConfirm={async () => { try { await api.delete(`/api/purchase-order-lines/${r.line_id}`, authHeaders); message.success('删除成功'); load(); } catch (e) { message.error(e?.response?.data?.detail || '删除失败'); } }}><Button className='click-btn' danger>删除</Button></Popconfirm> },
     ]} />
   </Card>;
@@ -618,7 +624,7 @@ function AdminBills({ role, authHeaders, bills, customers, allocations, reload }
       { title: '账单号', dataIndex: 'bill_no' },
       { title: '账单日期', dataIndex: 'created_at', render: (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; } },
       ...(role === 'super_admin' ? [{ title: '客户名', dataIndex: 'customer_name' }] : []),
-      { title: '金额', dataIndex: 'total_amount' },
+      { title: '金额', dataIndex: 'total_amount', render: (v) => fmtJPY(v) },
       { title: '货品点数', dataIndex: 'goods_points' },
       { title: '账单状态', render: (_, r) => stageLabel(r) },
       { title: '操作', render: (_, r) => <Button className='click-btn' onClick={async () => { const res = await api.get(`/api/bills/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>账单详情</Button> },
@@ -628,8 +634,8 @@ function AdminBills({ role, authHeaders, bills, customers, allocations, reload }
         { title: 'JAN', dataIndex: 'jan_snapshot' },
         { title: '品名', dataIndex: 'item_name_snapshot' },
         { title: '数量', dataIndex: 'qty' },
-        { title: '出售单价', dataIndex: 'sale_unit_price' },
-        { title: '小计价格', dataIndex: 'line_amount' },
+        { title: '出售单价', dataIndex: 'sale_unit_price', render: (v) => fmtJPY(v) },
+        { title: '小计价格', dataIndex: 'line_amount', render: (v) => fmtJPY(v) },
         { title: '订货时间', dataIndex: 'order_date', render: (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; } },
         { title: '到货时间', dataIndex: 'arrival_date', render: (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; } },
       ]} />
@@ -655,7 +661,7 @@ function HistoryBillsPanel({ role, bills, customers, authHeaders }) {
   return <Card className='panel' title='历史账单'>
     <Table rowKey='id' dataSource={rows} columns={[
       { title: '账单号', dataIndex: 'bill_no' },
-      { title: '账单金额', dataIndex: 'total_amount' },
+      { title: '账单金额', dataIndex: 'total_amount', render: (v) => fmtJPY(v) },
       { title: '客户', dataIndex: 'customer_name' },
       { title: '归档时间', dataIndex: 'archived_at', render: fmt },
       { title: '操作', render: (_, r) => <Button className='click-btn' loading={loading} onClick={async () => { setLoading(true); try { const res = await api.get(`/api/bills/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); } finally { setLoading(false); } }}>查看账单明细</Button> },
@@ -665,8 +671,8 @@ function HistoryBillsPanel({ role, bills, customers, authHeaders }) {
         { title: 'JAN', dataIndex: 'jan_snapshot' },
         { title: '商品名', dataIndex: 'item_name_snapshot' },
         { title: '数量', dataIndex: 'qty' },
-        { title: '单价', dataIndex: 'sale_unit_price' },
-        { title: '金额', dataIndex: 'line_amount' },
+        { title: '单价', dataIndex: 'sale_unit_price', render: (v) => fmtJPY(v) },
+        { title: '金额', dataIndex: 'line_amount', render: (v) => fmtJPY(v) },
       ]} />
     </Modal>
   </Card>;
