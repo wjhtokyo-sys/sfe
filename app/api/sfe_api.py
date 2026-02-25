@@ -252,6 +252,15 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
     )
     out = []
     for ln, po in rows:
+        item = db.query(Item).filter(Item.jan == ln.jan).first()
+        customer_name = ''
+        if item:
+            allocs = db.query(Allocation).filter(Allocation.item_id == item.id, Allocation.allocated_by == f'purchase_checkin:{po.po_no}').all()
+            if allocs:
+                cids = sorted({a.customer_id for a in allocs})
+                names = [db.get(Customer, cid).name for cid in cids if db.get(Customer, cid)]
+                customer_name = ' / '.join(names)
+
         out.append({
             'po_no': po.po_no,
             'purchased_at': po.purchased_at,
@@ -259,6 +268,7 @@ def arrival_overview(db: Session = Depends(get_db), _=Depends(require_roles('sup
             'item_name': ln.item_name_snapshot,
             'qty': ln.qty,
             'unit_cost': ln.unit_cost,
+            'customer_name': customer_name,
         })
     return out
 
@@ -386,7 +396,7 @@ def update_purchase_order_status(po_id: int, payload: dict, db: Session = Depend
                     qty_allocated=take,
                     fifo_rank_snapshot=lot.fifo_rank,
                     status='active',
-                    allocated_by='purchase_checkin',
+                    allocated_by=f'purchase_checkin:{po.po_no}',
                 )
                 db.add(alloc)
                 od.qty_allocated = (od.qty_allocated or 0) + take

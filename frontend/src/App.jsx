@@ -348,6 +348,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
       { title: '进货日期', dataIndex: 'purchased_at', render: fmtDate },
       { title: 'JAN', dataIndex: 'jan' },
       { title: '品名', dataIndex: 'item_name' },
+      { title: '客户名', dataIndex: 'customer_name' },
       { title: '数量', dataIndex: 'qty' },
       { title: '采购单价', dataIndex: 'unit_cost' },
     ]} />
