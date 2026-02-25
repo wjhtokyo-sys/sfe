@@ -118,7 +118,7 @@ export default function App() {
     if (orderArrivalStatusFilter === 'full') return req > 0 && arr >= req;
     return true;
   };
-  const orderCols = [{ title: '订单ID', dataIndex: 'id' }, { title: role === 'super_admin' ? '客户名' : '订货时间', dataIndex: role === 'super_admin' ? 'customer_id' : 'created_at', render: (v, r) => role === 'super_admin' ? (data.customers.find(c => c.id === v)?.name || `客户${v}`) : fmtDate(r.created_at) }, { title: 'JAN', dataIndex: 'jan_snapshot' }, { title: '商品', dataIndex: 'item_name_snapshot' }, { title: '订货', dataIndex: 'qty_requested' }, { title: '已到货', dataIndex: 'qty_allocated', render: (v, r) => (v && Number(v) !== 0) ? <Button type='link' className='click-btn' onClick={async () => { const res = await api.get(`/api/orders/${r.id}/arrivals`, authHeaders); setOrderArrivalRows(res.data || []); setOrderArrivalOpen(true); }}>{v}</Button> : v }, ...(role === 'super_admin' ? [{ title: '订货时间', dataIndex: 'created_at', render: (v) => fmtDate(v) }] : []), { title: '操作', render: (_, r) => <Popconfirm title='确认删除该订单？' onConfirm={async () => { await api.delete(`/api/orders/${r.id}`, authHeaders); message.success('订单已删除'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm> }];
+  const orderCols = [{ title: '订单ID', dataIndex: 'id' }, { title: role === 'super_admin' ? '客户名' : '订货时间', dataIndex: role === 'super_admin' ? 'customer_id' : 'created_at', render: (v, r) => role === 'super_admin' ? (data.customers.find(c => c.id === v)?.name || `客户${v}`) : fmtDate(r.created_at) }, { title: 'JAN', dataIndex: 'jan_snapshot' }, { title: '商品', dataIndex: 'item_name_snapshot' }, { title: '订货', dataIndex: 'qty_requested' }, { title: '已到货', dataIndex: 'qty_allocated', render: (v, r) => (v && Number(v) !== 0) ? <Button type='link' className='click-btn' onClick={async () => { try { const res = await api.get(`/api/orders/${r.id}/arrivals`, authHeaders); setOrderArrivalRows(res.data || []); setOrderArrivalOpen(true); } catch (e) { message.error(e?.response?.data?.detail || '读取到货记录失败'); } }}>{v}</Button> : v }, ...(role === 'super_admin' ? [{ title: '订货时间', dataIndex: 'created_at', render: (v) => fmtDate(v) }] : []), { title: '操作', render: (_, r) => <Popconfirm title='确认删除该订单？' onConfirm={async () => { try { await api.delete(`/api/orders/${r.id}`, authHeaders); message.success('订单已删除'); load(); } catch (e) { message.error(e?.response?.data?.detail || '删除订单失败'); } }}><Button className='click-btn' danger>删除</Button></Popconfirm> }];
 
   const billCols = [{ title: '账单号', dataIndex: 'bill_no' }, { title: '金额', dataIndex: 'total_amount', render: (v) => fmtJPY(v) }, { title: '账单状态', dataIndex: 'status' }, { title: '付款状态', dataIndex: 'payment_status' }, { title: '物流状态', dataIndex: 'shipping_status' }];
 
@@ -196,7 +196,17 @@ function CustomerOrderBtn({ row, me, authHeaders, reload }) {
   const [open, setOpen] = useState(false); const [qty, setQty] = useState(1);
   return <>
     <Button className='click-btn' type='primary' onClick={() => setOpen(true)}>下单</Button>
-    <Modal open={open} title='填写订货数' onCancel={() => setOpen(false)} onOk={async () => { await api.post('/api/orders', { customer_id: me.customer_id, item_id: row.id, qty_requested: qty }, authHeaders); message.success('下单成功'); setOpen(false); reload(); }}>
+    <Modal open={open} title='填写订货数' onCancel={() => setOpen(false)} onOk={async () => {
+      if (!Number(qty) || Number(qty) <= 0) { message.error('订货数必须大于0'); return; }
+      try {
+        await api.post('/api/orders', { customer_id: me.customer_id, item_id: row.id, qty_requested: qty }, authHeaders);
+        message.success('下单成功');
+        setOpen(false);
+        reload();
+      } catch (e) {
+        message.error(e?.response?.data?.detail || '下单失败');
+      }
+    }}>
       <InputNumber min={1} value={qty} onChange={(v) => setQty(v || 1)} style={{ width: '100%' }} />
     </Modal>
   </>;
@@ -269,16 +279,21 @@ function AccountManagePage({ customerRows, customers, adminUsers, authHeaders, r
 function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
   const [edit, setEdit] = useState(null);
   const [newItem, setNewItem] = useState({ jan: '', brand: '', name: '', spec: '', msrp_price: undefined, in_qty: undefined, is_active: true });
-  const cols = [{ title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price', render: (v) => fmtJPY(v) }, { title: '入数', dataIndex: 'in_qty' }, { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => setEdit(r)}>修改</Button><Popconfirm title='确认删除该商品？' onConfirm={async () => { await api.delete(`/api/items/${r.id}`, authHeaders); message.success('删除成功'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> }];
+  const cols = [{ title: 'JAN', dataIndex: 'jan' }, { title: '品牌', dataIndex: 'brand' }, { title: '商品名', dataIndex: 'name' }, { title: '零售价', dataIndex: 'msrp_price', render: (v) => fmtJPY(v) }, { title: '入数', dataIndex: 'in_qty' }, { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => setEdit(r)}>修改</Button><Popconfirm title='确认删除该商品？' onConfirm={async () => { try { await api.delete(`/api/items/${r.id}`, authHeaders); message.success('删除成功'); load(); } catch (e) { message.error(e?.response?.data?.detail || '删除失败'); } }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> }];
   return <Card className='panel' title='商品信息管理'>
     <Space wrap>
       <Input placeholder='按JAN或关键字检索' value={kw} onChange={(e) => setKw(e.target.value)} />
       <Button className='click-btn' onClick={load}>搜索</Button>
       <Button className='click-btn' onClick={async () => {
-        const resp = await api.get('/api/items/import-template', { ...authHeaders, responseType: 'blob' });
-        const url = window.URL.createObjectURL(new Blob([resp.data]));
-        const a = document.createElement('a'); a.href = url; a.download = 'item_template.xlsx'; a.click();
-        window.URL.revokeObjectURL(url);
+        try {
+          const resp = await api.get('/api/items/import-template', { ...authHeaders, responseType: 'blob' });
+          const url = window.URL.createObjectURL(new Blob([resp.data]));
+          const a = document.createElement('a'); a.href = url; a.download = 'item_template.xlsx'; a.click();
+          window.URL.revokeObjectURL(url);
+          message.success('模板下载成功');
+        } catch (e) {
+          message.error(e?.response?.data?.detail || '模板下载失败');
+        }
       }}>下载导入模板</Button>
       <Upload accept='.xlsx' showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { Modal.confirm({ title: '确认导入', content: `确认导入文件：${file?.name || ''}？`, onOk: async () => { const fd = new FormData(); fd.append('file', file); await api.post('/api/items/import-excel', fd, { ...authHeaders, headers: { ...authHeaders.headers, 'Content-Type': 'multipart/form-data' } }); message.success('批量导入成功'); load(); onSuccess('ok'); }, onCancel: () => onError(new Error('cancelled')) }); } catch (e) { message.error(e?.response?.data?.detail || '导入失败'); onError(e); } }}><Button className='click-btn' icon={<UploadOutlined />}>批量导入Excel</Button></Upload>
     </Space>
@@ -307,7 +322,7 @@ function ItemAdminPanel({ items, kw, setKw, load, authHeaders }) {
       }}>手动新增商品</Button>
     </Space>
     <Table rowKey='id' dataSource={items} columns={cols} style={{ marginTop: 8 }} />
-    <Modal open={!!edit} title='修改商品信息' onCancel={() => setEdit(null)} onOk={async () => { await api.patch(`/api/items/${edit.id}`, edit, authHeaders); message.success('修改成功'); setEdit(null); load(); }}>
+    <Modal open={!!edit} title='修改商品信息' onCancel={() => setEdit(null)} onOk={async () => { try { await api.patch(`/api/items/${edit.id}`, edit, authHeaders); message.success('修改成功'); setEdit(null); load(); } catch (e) { message.error(e?.response?.data?.detail || '修改失败'); } }}>
       {edit && <Space direction='vertical' style={{ width: '100%' }}><Input value={edit.jan} onChange={(e) => setEdit({ ...edit, jan: e.target.value })} /><Input value={edit.brand} onChange={(e) => setEdit({ ...edit, brand: e.target.value })} /><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /><InputNumber value={edit.msrp_price} onChange={(v) => setEdit({ ...edit, msrp_price: v || 0 })} style={{ width: '100%' }} placeholder='零售价' /><InputNumber value={edit.in_qty} onChange={(v) => setEdit({ ...edit, in_qty: v || 1 })} style={{ width: '100%' }} /></Space>}
     </Modal>
   </Card>;
@@ -323,15 +338,15 @@ function SupplierPanel({ authHeaders }) {
     <Space style={{ marginBottom: 8 }}>
       <Input placeholder='供应商编码' value={form.supplier_code} onChange={(e) => setForm({ ...form, supplier_code: e.target.value })} />
       <Input placeholder='供应商名' value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-      <Button className='click-btn' type='primary' onClick={async () => { await api.post('/api/suppliers', form, authHeaders); setForm({ supplier_code: '', name: '' }); load(); }}>追加</Button>
+      <Button className='click-btn' type='primary' onClick={async () => { if (!String(form.supplier_code || '').trim() || !String(form.name || '').trim()) { message.error('供应商编码和供应商名必须填写'); return; } try { await api.post('/api/suppliers', form, authHeaders); message.success('追加成功'); setForm({ supplier_code: '', name: '' }); load(); } catch (e) { message.error(e?.response?.data?.detail || '追加失败'); } }}>追加</Button>
     </Space>
     <Table rowKey='id' dataSource={rows} columns={[
       { title: '供应商ID', dataIndex: 'id' },
       { title: '供应商编码', dataIndex: 'supplier_code' },
       { title: '供应商名', dataIndex: 'name' },
-      { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => setEdit({ ...r })}>修改</Button><Popconfirm title='确认删除供应商？' onConfirm={async () => { await api.delete(`/api/suppliers/${r.id}`, authHeaders); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
+      { title: '操作', render: (_, r) => <Space><Button className='click-btn' onClick={() => setEdit({ ...r })}>修改</Button><Popconfirm title='确认删除供应商？' onConfirm={async () => { try { await api.delete(`/api/suppliers/${r.id}`, authHeaders); message.success('删除成功'); load(); } catch (e) { message.error(e?.response?.data?.detail || '删除失败'); } }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
     ]} />
-    <Modal open={!!edit} title='修改供应商' onCancel={() => setEdit(null)} onOk={async () => { await api.patch(`/api/suppliers/${edit.id}`, { supplier_code: edit.supplier_code, name: edit.name }, authHeaders); setEdit(null); load(); }}>
+    <Modal open={!!edit} title='修改供应商' onCancel={() => setEdit(null)} onOk={async () => { if (!String(edit?.supplier_code || '').trim() || !String(edit?.name || '').trim()) { message.error('供应商编码和供应商名必须填写'); return; } try { await api.patch(`/api/suppliers/${edit.id}`, { supplier_code: edit.supplier_code, name: edit.name }, authHeaders); message.success('修改成功'); setEdit(null); load(); } catch (e) { message.error(e?.response?.data?.detail || '修改失败'); } }}>
       {edit && <Space direction='vertical' style={{ width: '100%' }}><Input value={edit.supplier_code} onChange={(e) => setEdit({ ...edit, supplier_code: e.target.value })} /><Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Space>}
     </Modal>
   </Card>;
@@ -384,7 +399,7 @@ function PurchaseOrderPanel({ authHeaders }) {
 
   return <Card className='panel' title='进货单管理'>
     <Space wrap>
-      <Button className='click-btn' onClick={async () => { const resp = await api.get('/api/purchase-orders/import-template', { ...authHeaders, responseType: 'blob' }); const url = window.URL.createObjectURL(new Blob([resp.data])); const a = document.createElement('a'); a.href = url; a.download = 'purchase_order_template.xlsx'; a.click(); window.URL.revokeObjectURL(url); }}>下载导入模板</Button>
+      <Button className='click-btn' onClick={async () => { try { const resp = await api.get('/api/purchase-orders/import-template', { ...authHeaders, responseType: 'blob' }); const url = window.URL.createObjectURL(new Blob([resp.data])); const a = document.createElement('a'); a.href = url; a.download = 'purchase_order_template.xlsx'; a.click(); window.URL.revokeObjectURL(url); message.success('模板下载成功'); } catch (e) { message.error(e?.response?.data?.detail || '模板下载失败'); } }}>下载导入模板</Button>
       <Select placeholder='选择供应商（必选）' style={{ width: 220 }} value={importSupplierId} options={suppliers.map(s => ({ label: s.name, value: s.id }))} onChange={setImportSupplierId} />
       <Upload accept='.xlsx' showUploadList={false} customRequest={async ({ file, onSuccess, onError }) => { try { if (!importSupplierId) { message.error('请先选择供应商'); onError(new Error('missing supplier')); return; } Modal.confirm({ title: '确认导入', content: `确认导入文件：${file?.name || ''}？`, onOk: async () => { const fd = new FormData(); fd.append('supplier_id', importSupplierId); fd.append('file', file); const res = await api.post('/api/purchase-orders/import-excel', fd, { ...authHeaders, headers: { ...authHeaders.headers, 'Content-Type': 'multipart/form-data' } }); const supplierName = suppliers.find(s => s.id === importSupplierId)?.name || ''; message.success(`导入成功：进货单号 ${res.data?.po_no || ''}，导入行数 ${res.data?.rows || 0}，供应商名 ${supplierName}`); load(); onSuccess('ok'); }, onCancel: () => onError(new Error('cancelled')) }); } catch (e) { message.error(e?.response?.data?.detail || '导入失败'); onError(e); } }}><Button className='click-btn' icon={<UploadOutlined />} disabled={!importSupplierId}>批量导入</Button></Upload>
     </Space>
@@ -425,7 +440,7 @@ function PurchaseOrderPanel({ authHeaders }) {
     </div>)}
 
     <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-      <Popconfirm title='是否要回复进货单到初始状态' onConfirm={async () => { await api.post('/api/purchase-orders/reset-status', { ids: pickedPoIds }, authHeaders); message.success('已恢复初始状态'); setPickedPoIds([]); load(); }}>
+      <Popconfirm title='是否要回复进货单到初始状态' onConfirm={async () => { try { await api.post('/api/purchase-orders/reset-status', { ids: pickedPoIds }, authHeaders); message.success('已恢复初始状态'); setPickedPoIds([]); load(); } catch (e) { message.error(e?.response?.data?.detail || '恢复失败'); } }}>
         <Button className='click-btn' disabled={!pickedPoIds.length}>恢复按钮</Button>
       </Popconfirm>
     </div>
@@ -439,10 +454,10 @@ function PurchaseOrderPanel({ authHeaders }) {
       { title: '盘点状态', dataIndex: 'status', render: statusTag },
       {
         title: '操作', render: (_, r) => <Space>
-          <Button className='click-btn' onClick={async () => { const res = await api.get(`/api/purchase-orders/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>到货详细</Button>
-          {r.payment_status !== 'paid' && <Popconfirm title='确认已支付？' onConfirm={async () => { await api.post(`/api/purchase-orders/${r.id}/pay`, {}, authHeaders); message.success('已更新为已支付'); load(); }}><Button className='click-btn' type='primary'>支付完成</Button></Popconfirm>}
-          {r.status === 'created_unchecked' && <Popconfirm title='确认盘点完成？' onConfirm={async () => { await api.post(`/api/purchase-orders/${r.id}/status`, { status: 'checked_inbound' }, authHeaders); message.success('盘点完成'); load(); }}><Button className='click-btn' type='primary'>盘点完成</Button></Popconfirm>}
-          {r.status === 'created_unchecked' && <Popconfirm title='确认删除进货单？' onConfirm={async () => { await api.delete(`/api/purchase-orders/${r.id}`, authHeaders); message.success('删除成功'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm>}
+          <Button className='click-btn' onClick={async () => { try { const res = await api.get(`/api/purchase-orders/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); } catch (e) { message.error(e?.response?.data?.detail || '读取到货详细失败'); } }}>到货详细</Button>
+          {r.payment_status !== 'paid' && <Popconfirm title='确认已支付？' onConfirm={async () => { try { await api.post(`/api/purchase-orders/${r.id}/pay`, {}, authHeaders); message.success('已更新为已支付'); load(); } catch (e) { message.error(e?.response?.data?.detail || '更新支付状态失败'); } }}><Button className='click-btn' type='primary'>支付完成</Button></Popconfirm>}
+          {r.status === 'created_unchecked' && <Popconfirm title='确认盘点完成？' onConfirm={async () => { try { await api.post(`/api/purchase-orders/${r.id}/status`, { status: 'checked_inbound' }, authHeaders); message.success('盘点完成'); load(); } catch (e) { message.error(e?.response?.data?.detail || '盘点失败'); } }}><Button className='click-btn' type='primary'>盘点完成</Button></Popconfirm>}
+          {r.status === 'created_unchecked' && <Popconfirm title='确认删除进货单？' onConfirm={async () => { try { await api.delete(`/api/purchase-orders/${r.id}`, authHeaders); message.success('删除成功'); load(); } catch (e) { message.error(e?.response?.data?.detail || '删除失败'); } }}><Button className='click-btn' danger>删除</Button></Popconfirm>}
         </Space>
       },
     ]} />
@@ -691,7 +706,7 @@ function DatabaseOpsPanel({ authHeaders }) {
   return <Card className='panel' title='数据库操作'>
     <Space wrap>
       <Select placeholder='选择表' style={{ width: 220 }} value={tableName} options={tables.map(t => ({ label: t, value: t }))} onChange={(v) => { setTableName(v); loadRows(v); }} />
-      <Button className='click-btn' onClick={() => loadRows()}>读取表数据</Button>
+      <Button className='click-btn' onClick={async () => { if (!tableName) { message.error('请先选择表'); return; } try { await loadRows(); message.success('读取成功'); } catch (e) { message.error(e?.response?.data?.detail || '读取失败'); } }}>读取表数据</Button>
     </Space>
 
     <Space style={{ marginTop: 8 }} align='start'>
@@ -751,7 +766,7 @@ function AdminBills({ role, authHeaders, bills, customers, allocations, reload }
       { title: '金额', dataIndex: 'total_amount', render: (v) => fmtJPY(v) },
       { title: '货品点数', dataIndex: 'goods_points' },
       { title: '账单状态', render: (_, r) => stageLabel(r) },
-      { title: '操作', render: (_, r) => <Button className='click-btn' onClick={async () => { const res = await api.get(`/api/bills/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>账单详情</Button> },
+      { title: '操作', render: (_, r) => <Button className='click-btn' onClick={async () => { try { const res = await api.get(`/api/bills/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); } catch (e) { message.error(e?.response?.data?.detail || '读取账单详情失败'); } }}>账单详情</Button> },
     ]} style={{ marginTop: 8 }} />
     <Modal open={detailOpen} title='账单详情' footer={null} onCancel={() => setDetailOpen(false)} width={900}>
       <Table rowKey='id' pagination={false} dataSource={detailRows} columns={[
