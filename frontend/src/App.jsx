@@ -83,7 +83,13 @@ export default function App() {
   const billCols = [{ title: '账单号', dataIndex: 'bill_no' }, { title: '金额', dataIndex: 'total_amount' }, { title: '账单状态', dataIndex: 'status' }, { title: '付款状态', dataIndex: 'payment_status' }, { title: '物流状态', dataIndex: 'shipping_status' }];
 
   return <Layout style={{ minHeight: '100vh' }}>
-    <Sider><div style={{ color: '#fff', padding: 16 }}>{role === 'customer' ? '客户管理页' : '超级管理员管理页'}</div><Menu theme='dark' mode='inline' selectedKeys={[menu]} items={role === 'customer' ? customerMenus : adminMenus} onClick={(e) => setMenu(e.key)} /></Sider>
+    <Sider>
+      <div style={{ color: '#fff', padding: 16 }}>
+        <div>{role === 'customer' ? '客户管理页' : '超级管理员管理页'}</div>
+        {role === 'customer' && <div style={{ marginTop: 6, color: '#ffd666', fontSize: 12 }}>当前登录中：{me?.customer_name || '-'}</div>}
+      </div>
+      <Menu theme='dark' mode='inline' selectedKeys={[menu]} items={role === 'customer' ? customerMenus : adminMenus} onClick={(e) => setMenu(e.key)} />
+    </Sider>
     <Layout><Content className='page'>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
         <Space><Button className='click-btn' loading={refreshing} onClick={load}>{refreshing ? '刷新中...' : '刷新'}</Button></Space>
