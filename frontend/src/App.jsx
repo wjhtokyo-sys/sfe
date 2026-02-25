@@ -150,7 +150,7 @@ export default function App() {
 
       {role !== 'customer' && menu === 'arrival_unchecked' && <ArrivalOverviewPanel authHeaders={authHeaders} />}
 
-      {role !== 'customer' && menu === 'fifo' && <FifoPendingPanel authHeaders={authHeaders} />}
+      {role !== 'customer' && menu === 'fifo' && <FifoPendingPanel authHeaders={authHeaders} customers={data.customers} orders={data.orders} />}
 
     </Content></Layout>
   </Layout>;
@@ -393,8 +393,9 @@ function PurchaseOrderPanel({ authHeaders }) {
   </Card>;
 }
 
-function FifoPendingPanel({ authHeaders }) {
+function FifoPendingPanel({ authHeaders, customers = [], orders = [] }) {
   const [rows, setRows] = useState([]); const [action, setAction] = useState('inbound_to_order');
+  const [customerFilter, setCustomerFilter] = useState();
   const load = async () => setRows(await api.get('/api/fifo/pending', authHeaders).then(r => r.data));
   useEffect(() => { load(); }, []);
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
@@ -407,10 +408,14 @@ function FifoPendingPanel({ authHeaders }) {
     { title: '进货价格', dataIndex: 'unit_cost' },
     { title: '操作', render: (_, r) => <Space><Select style={{ width: 180 }} value={action} onChange={setAction} options={[{ label: '匹配订单后入库', value: 'inbound_to_order' }, { label: '转普通库存入库', value: 'inbound_stock' }, { label: '仅关闭任务', value: 'close_only' }]} /><Button className='click-btn' onClick={async () => { await api.post(`/api/fifo/pending/${r.id}/resolve`, { action }, authHeaders); message.success('已处理'); load(); }}>执行</Button><Popconfirm title='确认删除该挂起记录？' onConfirm={async () => { await api.delete(`/api/fifo/pending/${r.id}`, authHeaders); message.success('删除成功'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm></Space> },
   ];
-  const multiRows = rows.filter(r => r.reason_code === 'multi_customer_match' && r.status === 'pending');
+  const multiRowsRaw = rows.filter(r => r.reason_code === 'multi_customer_match' && r.status === 'pending');
+  const multiRows = !customerFilter ? multiRowsRaw : multiRowsRaw.filter(r => orders.some(o => o.customer_id === customerFilter && o.jan_snapshot === r.jan));
   const noMatchRows = rows.filter(r => r.reason_code === 'no_order_match' && r.status === 'pending');
   return <Card className='panel' title='FIFO管理'>
     <Card size='small' title='多客户命中分配管理'>
+      <Space style={{ marginBottom: 8 }}>
+        <Select allowClear placeholder='客户名' style={{ width: 220 }} value={customerFilter} options={customers.map(c => ({ label: c.name, value: c.id }))} onChange={setCustomerFilter} />
+      </Space>
       <Table rowKey='id' dataSource={multiRows} columns={commonCols} />
     </Card>
     <Card size='small' title='无匹配货品管理' style={{ marginTop: 8 }}>
