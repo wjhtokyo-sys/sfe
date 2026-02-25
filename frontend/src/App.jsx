@@ -529,7 +529,7 @@ function AdminBills({ role, authHeaders, bills, customers, allocations, reload }
     if (b.payment_status === 'paid') return '已支付';
     return '已创建';
   };
-  const activeBills = bills.filter(b => b.status !== 'archived').map(b => ({ ...b, customer_name: customers.find(cu => cu.id === b.customer_id)?.name || `客户${b.customer_id}`, goods_points: 0 }));
+  const activeBills = bills.filter(b => b.status !== 'archived').map(b => ({ ...b, customer_name: customers.find(cu => cu.id === b.customer_id)?.name || `客户${b.customer_id}` }));
   const actionOptions = role === 'customer'
     ? [{ label: '已支付', value: 'pay' }, { label: '已收货', value: 'deliver' }]
     : [{ label: '已创建', value: 'created' }, { label: '已支付', value: 'pay' }, { label: '已确认支付', value: 'confirm_receipt' }, { label: '已发货', value: 'ship' }, { label: '已收货', value: 'deliver' }, { label: '已归档', value: 'archive' }];
@@ -542,7 +542,7 @@ function AdminBills({ role, authHeaders, bills, customers, allocations, reload }
       { title: '账单日期', dataIndex: 'created_at', render: (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; } },
       ...(role === 'super_admin' ? [{ title: '客户名', dataIndex: 'customer_name' }] : []),
       { title: '金额', dataIndex: 'total_amount' },
-      { title: '商品点数', dataIndex: 'goods_points' },
+      { title: '货品点数', dataIndex: 'goods_points' },
       { title: '账单状态', render: (_, r) => stageLabel(r) },
       { title: '操作', render: (_, r) => <Button className='click-btn' onClick={async () => { const res = await api.get(`/api/bills/${r.id}/lines`, authHeaders); setDetailRows(res.data || []); setDetailOpen(true); }}>账单详情</Button> },
     ]} style={{ marginTop: 8 }} />
