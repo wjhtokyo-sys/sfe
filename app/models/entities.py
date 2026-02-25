@@ -87,7 +87,7 @@ class Bill(Base, TimestampMixin):
     payment_status: Mapped[str] = mapped_column(String(16), default="unpaid")
     shipping_status: Mapped[str] = mapped_column(String(16), default="not_shipped")
     total_amount: Mapped[float] = mapped_column(Float, default=0)
-    currency: Mapped[str] = mapped_column(String(8), default="CNY")
+    currency: Mapped[str] = mapped_column(String(8), default="JPY")
     payment_confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
