@@ -413,6 +413,8 @@ def arrival_bill_candidates(customer_id: int, db: Session = Depends(get_db), _=D
             'qty': a.qty_allocated,
             'purchase_unit_price': pol.unit_cost if pol else 0,
             'order_date': order.created_at if order else None,
+            'order_qty_requested': order.qty_requested if order else 0,
+            'order_qty_allocated': order.qty_allocated if order else 0,
         })
     return out
 
@@ -931,11 +933,19 @@ def order_arrivals(order_id: int, db: Session = Depends(get_db), user=Depends(ge
         if arrival_time is None:
             lot = db.get(InventoryLot, a.lot_id)
             arrival_time = lot.created_at if lot else None
+        unit_cost = None
+        if a.allocated_by and ':' in a.allocated_by:
+            po_no = a.allocated_by.split(':', 1)[1]
+            po = db.query(PurchaseOrder).filter(PurchaseOrder.po_no == po_no).first()
+            if po:
+                pol = db.query(PurchaseOrderLine).filter(PurchaseOrderLine.purchase_order_id == po.id, PurchaseOrderLine.jan == (item.jan if item else order.jan_snapshot)).first()
+                unit_cost = pol.unit_cost if pol else None
         out.append({
             'arrival_time': arrival_time,
             'jan': item.jan if item else order.jan_snapshot,
             'item_name': item.name if item else order.item_name_snapshot,
             'qty': a.qty_allocated,
+            'unit_cost': unit_cost,
         })
     return out
 

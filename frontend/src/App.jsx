@@ -23,6 +23,7 @@ export default function App() {
   const [fifoLot, setFifoLot] = useState({ item_id: undefined, qty_received: 1 });
   const [fifoOrderId, setFifoOrderId] = useState();
   const [orderCustomerFilter, setOrderCustomerFilter] = useState();
+  const [orderArrivalStatusFilter, setOrderArrivalStatusFilter] = useState();
   const [orderArrivalOpen, setOrderArrivalOpen] = useState(false);
   const [orderArrivalRows, setOrderArrivalRows] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -108,6 +109,15 @@ export default function App() {
   ];
 
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
+  const matchArrivalStatus = (o) => {
+    if (!orderArrivalStatusFilter) return true;
+    const req = Number(o.qty_requested || 0);
+    const arr = Number(o.qty_allocated || 0);
+    if (orderArrivalStatusFilter === 'none') return arr === 0;
+    if (orderArrivalStatusFilter === 'partial') return arr > 0 && arr < req;
+    if (orderArrivalStatusFilter === 'full') return req > 0 && arr >= req;
+    return true;
+  };
   const orderCols = [{ title: '订单ID', dataIndex: 'id' }, { title: role === 'super_admin' ? '客户名' : '订货时间', dataIndex: role === 'super_admin' ? 'customer_id' : 'created_at', render: (v, r) => role === 'super_admin' ? (data.customers.find(c => c.id === v)?.name || `客户${v}`) : fmtDate(r.created_at) }, { title: 'JAN', dataIndex: 'jan_snapshot' }, { title: '商品', dataIndex: 'item_name_snapshot' }, { title: '订货', dataIndex: 'qty_requested' }, { title: '已到货', dataIndex: 'qty_allocated', render: (v, r) => (v && Number(v) !== 0) ? <Button type='link' className='click-btn' onClick={async () => { const res = await api.get(`/api/orders/${r.id}/arrivals`, authHeaders); setOrderArrivalRows(res.data || []); setOrderArrivalOpen(true); }}>{v}</Button> : v }, ...(role === 'super_admin' ? [{ title: '订货时间', dataIndex: 'created_at', render: (v) => fmtDate(v) }] : []), { title: '操作', render: (_, r) => <Popconfirm title='确认删除该订单？' onConfirm={async () => { await api.delete(`/api/orders/${r.id}`, authHeaders); message.success('订单已删除'); load(); }}><Button className='click-btn' danger>删除</Button></Popconfirm> }];
 
   const billCols = [{ title: '账单号', dataIndex: 'bill_no' }, { title: '金额', dataIndex: 'total_amount', render: (v) => fmtJPY(v) }, { title: '账单状态', dataIndex: 'status' }, { title: '付款状态', dataIndex: 'payment_status' }, { title: '物流状态', dataIndex: 'shipping_status' }];
@@ -132,23 +142,32 @@ export default function App() {
       </Card>}
 
       {menu === 'orders' && <Card className='panel' title={role === 'super_admin' ? '客户订单管理' : '订单管理'}>
-        {role === 'super_admin' && <Space style={{ marginBottom: 8 }}>
-          <Select
+        <Space style={{ marginBottom: 8 }}>
+          {role === 'super_admin' && <Select
             allowClear
             placeholder='客户名'
             style={{ width: 220 }}
             value={orderCustomerFilter}
             options={data.customers.map(c => ({ label: c.name, value: c.id }))}
             onChange={setOrderCustomerFilter}
+          />}
+          <Select
+            allowClear
+            placeholder='订单到货状态'
+            style={{ width: 220 }}
+            value={orderArrivalStatusFilter}
+            options={[{ label: '未到货', value: 'none' }, { label: '部分到货', value: 'partial' }, { label: '已全到货', value: 'full' }]}
+            onChange={setOrderArrivalStatusFilter}
           />
-        </Space>}
-        <Table rowKey='id' dataSource={(role === 'super_admin' ? data.orders.filter(o => o.status === 'open') : data.orders).filter(o => !orderCustomerFilter || o.customer_id === orderCustomerFilter)} columns={orderCols} />
+        </Space>
+        <Table rowKey='id' dataSource={(role === 'super_admin' ? data.orders.filter(o => o.status === 'open') : data.orders).filter(o => !orderCustomerFilter || o.customer_id === orderCustomerFilter).filter(matchArrivalStatus)} columns={orderCols} />
         <Modal open={orderArrivalOpen} title='到货记录' footer={null} onCancel={() => setOrderArrivalOpen(false)} width={760}>
           <Table rowKey={(r, i) => `${r.jan}-${i}`} pagination={false} dataSource={orderArrivalRows} columns={[
             { title: '到货时间', dataIndex: 'arrival_time', render: (v) => fmtDate(v) },
             { title: 'JAN', dataIndex: 'jan' },
             { title: '品名', dataIndex: 'item_name' },
             { title: '数量', dataIndex: 'qty' },
+            { title: '进货价格', dataIndex: 'unit_cost', render: (v) => fmtJPY(v) },
           ]} />
         </Modal>
       </Card>}
@@ -476,6 +495,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
   const [billRows, setBillRows] = useState([]);
   const [pickedIds, setPickedIds] = useState([]);
   const [saleMap, setSaleMap] = useState({});
+  const [billArrivalStatusFilter, setBillArrivalStatusFilter] = useState();
 
   const load = async () => {
     const [arr, cs] = await Promise.all([
@@ -496,7 +516,17 @@ function ArrivalOverviewPanel({ authHeaders }) {
   useEffect(() => { load(); }, []);
   const fmtDate = (v) => { const d = v ? new Date(v) : null; if (!d || Number.isNaN(d.getTime())) return '-'; const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${y}年${m}月${day}日`; };
 
-  const selectedRows = billRows.filter(r => pickedIds.includes(r.allocation_id));
+  const matchBillArrivalStatus = (r) => {
+    if (!billArrivalStatusFilter) return true;
+    const req = Number(r.order_qty_requested || 0);
+    const arr = Number(r.order_qty_allocated || 0);
+    if (billArrivalStatusFilter === 'none') return arr === 0;
+    if (billArrivalStatusFilter === 'partial') return arr > 0 && arr < req;
+    if (billArrivalStatusFilter === 'full') return req > 0 && arr >= req;
+    return true;
+  };
+  const filteredBillRows = billRows.filter(matchBillArrivalStatus);
+  const selectedRows = filteredBillRows.filter(r => pickedIds.includes(r.allocation_id));
   const purchaseTotal = selectedRows.reduce((s, r) => s + (Number(r.purchase_unit_price || 0) * Number(r.qty || 0)), 0);
   const salesTotal = selectedRows.reduce((s, r) => s + (Number(saleMap[r.allocation_id] || 0) * Number(r.qty || 0)), 0);
 
@@ -504,6 +534,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
     <Card size='small' title='账单生成表'>
       <Space wrap style={{ marginBottom: 8 }}>
         <Select placeholder='客户名' style={{ width: 220 }} value={customerId} options={customers.map(c => ({ label: c.name, value: c.id }))} onChange={(v) => { setCustomerId(v); loadBillRows(v); }} />
+        <Select allowClear placeholder='订单到货状态' style={{ width: 220 }} value={billArrivalStatusFilter} options={[{ label: '未到货', value: 'none' }, { label: '部分到货', value: 'partial' }, { label: '已全到货', value: 'full' }]} onChange={setBillArrivalStatusFilter} />
         <span>账单进货价合计：{fmtJPY(purchaseTotal)}</span>
         <span>账单销售价合计：{fmtJPY(salesTotal)}</span>
         <Button className='click-btn' type='primary' disabled={!customerId || !pickedIds.length} onClick={async () => {
@@ -518,7 +549,7 @@ function ArrivalOverviewPanel({ authHeaders }) {
           }
         }}>生成账单</Button>
       </Space>
-      <Table rowKey='allocation_id' rowSelection={{ selectedRowKeys: pickedIds, onChange: (keys) => setPickedIds(keys) }} dataSource={billRows} columns={[
+      <Table rowKey='allocation_id' rowSelection={{ selectedRowKeys: pickedIds, onChange: (keys) => setPickedIds(keys) }} dataSource={filteredBillRows} columns={[
         { title: '进货日期', dataIndex: 'purchased_at', render: fmtDate },
         { title: 'JAN', dataIndex: 'jan' },
         { title: '品名', dataIndex: 'item_name' },
